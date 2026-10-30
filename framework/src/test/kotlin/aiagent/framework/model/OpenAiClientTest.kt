@@ -52,8 +52,8 @@ class OpenAiClientTest {
         val response = client { ok() }.chat(request).getOrThrow()
 
         assertEquals("안녕하세요! 무엇을 도와드릴까요?", response.choices[0].message.content)
-        assertEquals(19, response.usage.promptTokens)
-        assertEquals(10, response.usage.completionTokens)
+        assertEquals(54, response.usage.promptTokens)
+        assertEquals(11, response.usage.completionTokens)
         assertEquals("stop", response.choices[0].finishReason)
     }
 
