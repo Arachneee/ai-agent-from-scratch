@@ -5,7 +5,7 @@ import aiagent.shop.agent.ModelSettings
 data class ChatCommandResult(val settings: ModelSettings, val message: String, val reset: Boolean = false)
 
 const val CHAT_COMMAND_USAGE =
-    "사용법: /model <이름>, /temperature <0.0~2.0|off>, /max-tokens <양의 정수|off>, /raw <on|off>, /reset, /settings, /quit"
+    "사용법: /model <이름>, /temperature <0.0~2.0|off>, /max-tokens <양의 정수|off>, /raw <on|off>, /tools <on|off>, /reset, /settings, /quit"
 
 /** 모델 채팅 중에 `/`로 시작하는 줄을 해석한다. 값이 잘못되면 설정을 바꾸지 않고 사용법을 돌려준다. */
 fun applyChatCommand(line: String, settings: ModelSettings): ChatCommandResult {
@@ -27,6 +27,11 @@ fun applyChatCommand(line: String, settings: ModelSettings): ChatCommandResult {
             "off" -> settings.copy(showRaw = false)
             else -> null
         }
+        "/tools" -> when (arg) {
+            "on" -> settings.copy(toolsEnabled = true)
+            "off" -> settings.copy(toolsEnabled = false)
+            else -> null
+        }
         "/reset" -> return ChatCommandResult(settings, "대화 기록을 비웠습니다.", reset = true)
         "/settings" -> return ChatCommandResult(settings, describe(settings))
         else -> null
@@ -35,4 +40,4 @@ fun applyChatCommand(line: String, settings: ModelSettings): ChatCommandResult {
 }
 
 private fun describe(s: ModelSettings) =
-    "설정: model=${s.model}, temperature=${s.temperature ?: "off"}, max_tokens=${s.maxTokens ?: "off"}, raw=${if (s.showRaw) "on" else "off"}"
+    "설정: model=${s.model}, temperature=${s.temperature ?: "off"}, max_tokens=${s.maxTokens ?: "off"}, raw=${if (s.showRaw) "on" else "off"}, tools=${if (s.toolsEnabled) "on" else "off"}"

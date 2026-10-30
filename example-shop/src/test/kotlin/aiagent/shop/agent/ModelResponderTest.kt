@@ -88,6 +88,23 @@ class ModelResponderTest {
         assertEquals(0.15, usage.costUsd!!, 1e-9)
     }
 
+    @Test
+    fun toolsAreSentWhenEnabled() = runTest {
+        val client = FakeChatClient(listOf(ok("답")))
+        ModelResponder(client, { settings.copy(toolsEnabled = true) }, SYSTEM).respond("안녕")
+
+        assertEquals(listOf("get_order", "get_shipment"), client.requests[0].tools!!.map { it.function.name })
+    }
+
+    @Test
+    fun toolsOffOmitsToolsKey() = runTest {
+        val client = FakeChatClient(listOf(ok("답")))
+        ModelResponder(client, { settings.copy(toolsEnabled = false) }, SYSTEM).respond("안녕")
+
+        val body = Json.encodeToString(ChatRequest.serializer(), client.requests[0])
+        assertFalse("tools" in body, body)
+    }
+
     private class FakeChatClient(private val results: List<Result<ChatResponse>>) : ChatClient {
         val requests = mutableListOf<ChatRequest>()
 

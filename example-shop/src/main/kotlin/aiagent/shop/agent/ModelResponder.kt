@@ -30,6 +30,7 @@ class ModelResponder(
             messages = listOf(ChatRequest.MessageRequest("system", systemPrompt)) + history + user,
             temperature = current.temperature,
             maxTokens = current.maxTokens,
+            tools = if (current.toolsEnabled) ShopTools.definitions else null,
         )
         lastUsage = null
         val response = client.chat(request).getOrElse { return failureText(it) }

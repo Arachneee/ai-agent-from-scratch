@@ -59,7 +59,14 @@
 - [ ] **Step 7: 실행해서 통과를 확인한다.** `./gradlew test`가 `BUILD SUCCESSFUL`이어야 하고 기존 테스트도 모두 통과해야 한다.
 - [ ] **Step 8: 커밋한다.** 메시지는 `툴 정의를 요청에 싣는다`.
 
-**확정된 모양:** Step 3에서 채운다.
+**확정된 모양:** `ChatRequest`에 `val tools: List<Tool>? = null`을 더한다. null이면 요청 JSON에 `tools` 키가 빠진다. 툴 정의 타입은 모두 `ChatRequest` 안의 하위 클래스이고, 기본값 없이 붙여 넣은 JSON의 모양을 그대로 따른다.
+
+```kotlin
+data class Tool(val type: String, val function: Function)
+data class Function(val name: String, val description: String, val parameters: Parameters)
+data class Parameters(val type: String, val properties: Map<String, Property>, val required: List<String>)
+data class Property(val type: String, val description: String)
+```
 
 ### Task 2: 툴 호출 응답을 처음 보는 실험
 

@@ -10,7 +10,7 @@ class ChatCommandsTest {
 
     @Test
     fun invalidCommandValueKeepsSettings() {
-        for (line in listOf("/temperature 뜨겁게", "/temperature 3", "/max-tokens -1", "/max-tokens 0", "/raw maybe", "/model", "/nope")) {
+        for (line in listOf("/temperature 뜨겁게", "/temperature 3", "/max-tokens -1", "/max-tokens 0", "/raw maybe", "/tools maybe", "/model", "/nope")) {
             val result = applyChatCommand(line, settings)
             assertEquals(settings, result.settings, line)
             assertTrue("사용법" in result.message, "$line: ${result.message}")
@@ -25,6 +25,13 @@ class ChatCommandsTest {
         assertEquals(settings.copy(maxTokens = 5), applyChatCommand("/max-tokens 5", settings).settings)
         assertEquals(settings.copy(model = "gpt-x"), applyChatCommand("/model gpt-x", settings).settings)
         assertEquals(settings.copy(showRaw = true), applyChatCommand("/raw on", settings).settings)
+        assertEquals(settings.copy(toolsEnabled = false), applyChatCommand("/tools off", settings).settings)
+        assertEquals(settings, applyChatCommand("/tools on", settings.copy(toolsEnabled = false)).settings)
+    }
+
+    @Test
+    fun settingsShowTools() {
+        assertTrue("tools=on" in applyChatCommand("/settings", settings).message)
     }
 
     @Test
