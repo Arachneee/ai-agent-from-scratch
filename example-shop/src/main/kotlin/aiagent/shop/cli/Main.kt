@@ -24,7 +24,8 @@ private val COMMANDS = setOf("chat", "scenarios")
 private val RESPONDERS = setOf("rule", "model")
 
 private const val USAGE =
-    "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale>] [--responder <rule|model>] 또는 scenarios [--seed <정수>]"
+    "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale>] [--responder <rule|model>], " +
+        "scenarios [--seed <정수>], 또는 burst [--count <1~100>] [--concurrency <1~100>] [--model <이름>]"
 
 fun parseArgs(args: Array<String>): CliArgs {
     val command = args.firstOrNull()
@@ -60,6 +61,18 @@ fun requireApiKey(env: (String) -> String?): String {
 }
 
 fun main(args: Array<String>) = runBlocking {
+    if (args.firstOrNull() == "burst") {
+        val (burstArgs, apiKey) = try {
+            parseBurstArgs(args) to requireApiKey(System::getenv)
+        } catch (e: IllegalArgumentException) {
+            System.err.println(e.message)
+            System.err.println(USAGE)
+            exitProcess(2)
+        }
+        runBurst(burstArgs, apiKey)
+        return@runBlocking
+    }
+
     val (cli, faults, apiKey) = try {
         val parsed = parseArgs(args)
         Triple(parsed, FaultPresets.get(parsed.faults), if (parsed.responder == "model") requireApiKey(System::getenv) else null)
