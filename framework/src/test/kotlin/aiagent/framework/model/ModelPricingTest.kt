@@ -19,4 +19,9 @@ class ModelPricingTest {
 
     @Test
     fun unknownModelHasNoPrice() = assertNull(ModelPricing.costUsd("no-such-model", 1, 1))
+
+    @Test
+    fun defaultModelIsCallable() =
+        // gpt-4.1-nano는 모델 목록과 가격표에 남아 있지만 호출하면 404 model_not_found가 돌아온다(2026-10-30 확인).
+        assertEquals("gpt-4o-mini", ModelPricing.DEFAULT_MODEL)
 }

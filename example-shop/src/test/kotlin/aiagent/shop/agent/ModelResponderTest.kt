@@ -13,7 +13,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ModelResponderTest {
-    private val settings = ModelSettings(model = "gpt-4.1-nano", temperature = null, maxTokens = null, showRaw = false)
+    private val settings = ModelSettings(model = "gpt-4o-mini", temperature = null, maxTokens = null, showRaw = false)
 
     @Test
     fun historyGrowsOnlyOnSuccess() = runTest {
@@ -85,7 +85,7 @@ class ModelResponderTest {
         assertEquals(50, client.requests[0].maxTokens)
         val usage = responder.lastUsage!!
         assertEquals(1_000_000, usage.inputTokens)
-        assertEquals(0.10, usage.costUsd!!, 1e-9)
+        assertEquals(0.15, usage.costUsd!!, 1e-9)
     }
 
     private class FakeChatClient(private val results: List<Result<ChatResponse>>) : ChatClient {
