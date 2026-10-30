@@ -4,47 +4,73 @@ import aiagent.framework.model.ChatApiException
 import aiagent.framework.model.ChatClient
 import aiagent.framework.model.ChatRequest
 import aiagent.framework.model.ChatResponse
+import aiagent.shop.ShopWorld
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ModelResponderTest {
     private val settings = ModelSettings(model = "gpt-4o-mini", temperature = null, maxTokens = null, showRaw = false)
+    private val tools = ShopTools(ShopWorld.create(42))
 
     @Test
-    fun historyGrowsOnlyOnSuccess() = runTest {
-        val client = FakeChatClient(listOf(ok("첫 답"), rateLimited(), ok("셋째 답")))
-        val responder = ModelResponder(client, { settings }, SYSTEM)
+    fun usagePerRequestIsReported() = runTest {
+        val client = FakeChatClient(listOf(toolCall("get_shipment", promptTokens = 150), ok("출고 대기입니다.", promptTokens = 180)))
+        val responder = responder(client)
 
-        responder.respond("첫 질문")
-        responder.respond("둘째 질문")
-        responder.respond("셋째 질문")
+        responder.respond("주문번호 ORD-0001 지금 어디쯤 왔어요?")
 
-        assertEquals(
-            listOf("system" to SYSTEM, "user" to "첫 질문", "assistant" to "첫 답", "user" to "셋째 질문"),
-            client.requests[2].messages.map { it.role to it.content },
-        )
+        assertEquals(listOf(150, 180), responder.lastUsages.map { it.inputTokens })
+    }
+
+    @Test
+    fun answersFromToolResult() = runTest {
+        val client = FakeChatClient(listOf(toolCall("get_shipment"), ok("출고 대기입니다.")))
+        val responder = responder(client)
+
+        val reply = responder.respond("주문번호 ORD-0001 지금 어디쯤 왔어요?")
+
+        assertEquals("출고 대기입니다.", reply)
+        assertEquals("get_shipment", responder.lastToolCalls.single().name)
+        assertTrue("READY" in client.requests[1].messages.last().content!!)
+    }
+
+    @Test
+    fun toolsAreSentWhenEnabled() = runTest {
+        val client = FakeChatClient(listOf(ok("답")))
+        responder(client, settings.copy(toolsEnabled = true)).respond("안녕")
+
+        assertEquals(listOf("get_order", "get_shipment"), client.requests[0].tools!!.map { it.function.name })
+    }
+
+    @Test
+    fun toolsOffOmitsToolsKey() = runTest {
+        val client = FakeChatClient(listOf(ok("답")))
+        responder(client, settings.copy(toolsEnabled = false)).respond("안녕")
+
+        val body = Json.encodeToString(ChatRequest.serializer(), client.requests[0])
+        assertFalse("tools" in body, body)
     }
 
     @Test
     fun failureIsShownAndUsageCleared() = runTest {
-        val responder = ModelResponder(FakeChatClient(listOf(ok("답"), rateLimited())), { settings }, SYSTEM)
+        val responder = responder(FakeChatClient(listOf(ok("답"), rateLimited())))
 
         responder.respond("하나")
         val reply = responder.respond("둘")
 
         assertTrue(reply.startsWith("[모델 오류] 429"), reply)
-        assertNull(responder.lastUsage)
+        assertTrue(responder.lastUsages.isEmpty())
+        assertTrue(responder.lastToolCalls.isEmpty())
     }
 
     @Test
     fun resetClearsHistory() = runTest {
         val client = FakeChatClient(listOf(ok("답"), ok("새 답")))
-        val responder = ModelResponder(client, { settings }, SYSTEM)
+        val responder = responder(client)
 
         responder.respond("이전 질문")
         responder.reset()
@@ -56,9 +82,7 @@ class ModelResponderTest {
 
     @Test
     fun emptyContentShowsFinishReason() = runTest {
-        val responder = ModelResponder(FakeChatClient(listOf(ok(null, finishReason = "length"))), { settings }, SYSTEM)
-
-        val reply = responder.respond("길게 말해 줘")
+        val reply = responder(FakeChatClient(listOf(ok(null, finishReason = "length")))).respond("길게 말해 줘")
 
         assertFalse("null" in reply, reply)
         assertTrue("length" in reply, reply)
@@ -67,7 +91,7 @@ class ModelResponderTest {
     @Test
     fun offSettingsAreOmitted() = runTest {
         val client = FakeChatClient(listOf(ok("답")))
-        ModelResponder(client, { settings }, SYSTEM).respond("안녕")
+        responder(client).respond("안녕")
 
         val body = Json.encodeToString(ChatRequest.serializer(), client.requests[0])
         assertFalse("temperature" in body, body)
@@ -77,33 +101,18 @@ class ModelResponderTest {
     @Test
     fun settingsAreSentAndUsageIsRecorded() = runTest {
         val client = FakeChatClient(listOf(ok("답", promptTokens = 1_000_000, completionTokens = 0)))
-        val responder = ModelResponder(client, { settings.copy(temperature = 0.7, maxTokens = 50) }, SYSTEM)
+        val responder = responder(client, settings.copy(temperature = 0.7, maxTokens = 50))
 
         responder.respond("안녕")
 
         assertEquals(0.7, client.requests[0].temperature)
         assertEquals(50, client.requests[0].maxTokens)
-        val usage = responder.lastUsage!!
+        val usage = responder.lastUsages.single()
         assertEquals(1_000_000, usage.inputTokens)
         assertEquals(0.15, usage.costUsd!!, 1e-9)
     }
 
-    @Test
-    fun toolsAreSentWhenEnabled() = runTest {
-        val client = FakeChatClient(listOf(ok("답")))
-        ModelResponder(client, { settings.copy(toolsEnabled = true) }, SYSTEM).respond("안녕")
-
-        assertEquals(listOf("get_order", "get_shipment"), client.requests[0].tools!!.map { it.function.name })
-    }
-
-    @Test
-    fun toolsOffOmitsToolsKey() = runTest {
-        val client = FakeChatClient(listOf(ok("답")))
-        ModelResponder(client, { settings.copy(toolsEnabled = false) }, SYSTEM).respond("안녕")
-
-        val body = Json.encodeToString(ChatRequest.serializer(), client.requests[0])
-        assertFalse("tools" in body, body)
-    }
+    private fun responder(client: ChatClient, current: ModelSettings = settings) = ModelResponder(client, tools, { current }, SYSTEM)
 
     private class FakeChatClient(private val results: List<Result<ChatResponse>>) : ChatClient {
         val requests = mutableListOf<ChatRequest>()
@@ -119,16 +128,25 @@ class ModelResponderTest {
 
         fun rateLimited(): Result<ChatResponse> = Result.failure(ChatApiException(429, null))
 
+        fun toolCall(name: String, promptTokens: Int = 10) = response(
+            ChatResponse.MessageResponse(
+                "assistant", null, null, emptyList(),
+                listOf(ChatResponse.ToolCall("call_1", "function", ChatResponse.FunctionCall(name, """{"order_id":"ORD-0001"}"""))),
+            ),
+            "tool_calls", promptTokens, 19,
+        )
+
         fun ok(content: String?, finishReason: String = "stop", promptTokens: Int = 10, completionTokens: Int = 5) =
+            response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), finishReason, promptTokens, completionTokens)
+
+        fun response(message: ChatResponse.MessageResponse, finishReason: String, promptTokens: Int, completionTokens: Int) =
             Result.success(
                 ChatResponse(
                     id = "chatcmpl-test",
                     objectType = "chat.completion",
                     created = 0,
-                    model = "gpt-4.1-nano-2025-04-14",
-                    choices = listOf(
-                        ChatResponse.Choice(0, ChatResponse.MessageResponse("assistant", content, null, emptyList()), null, finishReason),
-                    ),
+                    model = "gpt-4o-mini-2024-07-18",
+                    choices = listOf(ChatResponse.Choice(0, message, null, finishReason)),
                     usage = ChatResponse.Usage(
                         promptTokens, completionTokens, promptTokens + completionTokens,
                         ChatResponse.PromptTokensDetails(0, 0),

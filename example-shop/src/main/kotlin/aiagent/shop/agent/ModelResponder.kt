@@ -1,60 +1,54 @@
 package aiagent.shop.agent
 
+import aiagent.framework.agent.Agent
+import aiagent.framework.agent.AgentSettings
+import aiagent.framework.agent.ExecutedToolCall
 import aiagent.framework.model.ChatApiException
 import aiagent.framework.model.ChatClient
-import aiagent.framework.model.ChatRequest
 import aiagent.framework.model.ModelPricing
 import aiagent.shop.scenario.Responder
 
 data class CallUsage(val inputTokens: Int, val outputTokens: Int, val costUsd: Double?)
 
 /**
- * 모델에게 대화를 보내 답을 받는 응답기다. 대화 기록은 성공한 턴만 쌓는다.
- * 주문 정보를 조회할 수단이 없으므로, 주문 상태를 물으면 모델이 지어낼 수 있다.
+ * 프레임워크의 [Agent]를 쇼핑몰의 [Responder]로 쓰게 한다. 대화 기록과 툴 호출 루프는 [Agent]가 맡는다.
+ * 모델 API 오류는 답 대신 `[모델 오류]` 문장으로 보여 준다.
  */
 class ModelResponder(
-    private val client: ChatClient,
+    client: ChatClient,
+    tools: ShopTools,
     private val settings: () -> ModelSettings,
-    private val systemPrompt: String = SYSTEM_PROMPT,
+    systemPrompt: String = SYSTEM_PROMPT,
 ) : Responder {
-    private val history = mutableListOf<ChatRequest.MessageRequest>()
+    private val agent = Agent(client, tools.catalog, { settings().toAgentSettings() }, systemPrompt)
 
-    var lastUsage: CallUsage? = null
+    var lastUsages: List<CallUsage> = emptyList()
+        private set
+
+    var lastToolCalls: List<ExecutedToolCall> = emptyList()
         private set
 
     override suspend fun respond(message: String): String {
-        val current = settings()
-        val user = ChatRequest.MessageRequest("user", message)
-        val request = ChatRequest(
-            model = current.model,
-            messages = listOf(ChatRequest.MessageRequest("system", systemPrompt)) + history + user,
-            temperature = current.temperature,
-            maxTokens = current.maxTokens,
-            tools = if (current.toolsEnabled) ShopTools.definitions else null,
-        )
-        lastUsage = null
-        val response = client.chat(request).getOrElse { return failureText(it) }
-
-        val choice = response.choices.first()
-        val content = choice.message.content.orEmpty()
-        history += user
-        history += ChatRequest.MessageRequest("assistant", content)
-        val usage = response.usage
+        lastUsages = emptyList()
+        lastToolCalls = emptyList()
+        val model = settings().model
+        val result = try {
+            agent.run(message)
+        } catch (e: ChatApiException) {
+            return "[모델 오류] ${e.status} ${e.error?.error?.message ?: "오류 본문을 해석하지 못했습니다"}"
+        }
         // 응답의 model은 날짜가 붙은 스냅숏 이름이라 가격표에 없으므로, 요청에 쓴 이름으로 비용을 찾는다.
-        lastUsage = CallUsage(
-            usage.promptTokens,
-            usage.completionTokens,
-            ModelPricing.costUsd(current.model, usage.promptTokens, usage.completionTokens),
-        )
-        return content.ifEmpty { "[빈 응답] finish_reason=${choice.finishReason}" }
+        lastUsages = result.usages.map {
+            CallUsage(it.promptTokens, it.completionTokens, ModelPricing.costUsd(model, it.promptTokens, it.completionTokens))
+        }
+        lastToolCalls = result.toolCalls
+        return result.answer
     }
 
-    fun reset() = history.clear()
+    fun reset() = agent.reset()
 
-    private fun failureText(e: Throwable): String = when (e) {
-        is ChatApiException -> "[모델 오류] ${e.status} ${e.error?.error?.message ?: "오류 본문을 해석하지 못했습니다"}"
-        else -> "[모델 오류] ${e::class.simpleName}: ${e.message}"
-    }
+    private fun ModelSettings.toAgentSettings() =
+        AgentSettings(model, temperature, maxTokens, if (toolsEnabled) ShopTools.NAMES else emptyList())
 
     companion object {
         const val SYSTEM_PROMPT =

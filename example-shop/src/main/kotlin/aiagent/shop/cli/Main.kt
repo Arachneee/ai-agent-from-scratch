@@ -7,6 +7,7 @@ import aiagent.shop.ShopWorld
 import aiagent.shop.agent.CallUsage
 import aiagent.shop.agent.ModelResponder
 import aiagent.shop.agent.ModelSettings
+import aiagent.shop.agent.ShopTools
 import aiagent.shop.fault.FaultPresets
 import aiagent.shop.fault.ServiceException
 import aiagent.shop.scenario.Responder
@@ -15,6 +16,7 @@ import aiagent.shop.scenario.ScenarioRunner
 import aiagent.shop.scenario.Scenarios
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlin.system.exitProcess
 
@@ -91,15 +93,15 @@ fun main(args: Array<String>) = runBlocking {
         }
         "chat" -> {
             val world = ShopWorld.create(cli.seed, faults)
-            if (apiKey == null) chatLoop(RuleBasedResponder(world)) else modelChat(apiKey)
+            if (apiKey == null) chatLoop(RuleBasedResponder(world)) else modelChat(apiKey, world)
         }
     }
 }
 
-private suspend fun modelChat(apiKey: String) {
+private suspend fun modelChat(apiKey: String, world: ShopWorld) {
     var settings = ModelSettings(ModelPricing.DEFAULT_MODEL, temperature = null, maxTokens = null, showRaw = false)
     val http = HttpClient(CIO) { rawExchangeLog(enabled = { settings.showRaw }, sink = ::println) }
-    val responder = ModelResponder(OpenAiClient(http, apiKey), { settings })
+    val responder = ModelResponder(OpenAiClient(http, apiKey), ShopTools(world), { settings })
     println(CHAT_COMMAND_USAGE)
     chatLoop(responder) { line ->
         val result = applyChatCommand(line, settings)
@@ -121,13 +123,26 @@ private suspend fun chatLoop(responder: Responder, onCommand: ((String) -> Unit)
             onCommand(line)
             continue
         }
-        try {
-            println(responder.respond(line))
-        } catch (e: ServiceException) {
-            println("[서비스 오류] ${e.message}")
-        }
-        if (responder is ModelResponder) responder.lastUsage?.let { println(usageLine(it)) }
+        runChatTurn(responder, line, ::println)
     }
+}
+
+/** 한 턴을 처리하고 출력한다. 예외가 나도 채팅이 끝나지 않도록 오류 문장으로 보여 준다. */
+suspend fun runChatTurn(responder: Responder, line: String, out: (String) -> Unit) {
+    try {
+        val reply = responder.respond(line)
+        if (responder is ModelResponder) {
+            responder.lastToolCalls.forEach { out("[툴] ${it.name} ${it.arguments} 결과: ${it.result}") }
+        }
+        out(reply)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: ServiceException) {
+        out("[서비스 오류] ${e.message}")
+    } catch (e: Exception) {
+        out("[오류] ${e::class.simpleName}: ${e.message}")
+    }
+    if (responder is ModelResponder) responder.lastUsages.forEach { out(usageLine(it)) }
 }
 
 private fun usageLine(usage: CallUsage): String {
