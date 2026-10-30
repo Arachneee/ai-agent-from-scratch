@@ -98,7 +98,12 @@ class ModelPricingTest {
 - [ ] **Step 8: 검토하고 설명한다.** 완성된 핵심 코드를 처음부터 읽으며 요청 하나가 나가고 응답 하나가 풀리기까지의 흐름을 설명한다. 학습자가 고르지 않은 동작이 기본값으로 숨어 있으면 짚는다. Ktor의 기본 시간 제한, 2xx가 아닌 응답에서 Ktor가 하는 일이 그 예다.
 - [ ] **Step 9: 커밋한다.** 메시지는 `Chat Completions 호출 클라이언트를 추가한다`.
 
-**확정된 모양:** Step 5에서 채운다.
+**확정된 모양:**
+- 요청은 `ChatRequest(model: String, messages: List<ChatRequest.MessageRequest>, temperature: Double? = null, maxTokens: Int? = null)`이고, `MessageRequest(role: String, content: String)`이다. `maxTokens`는 JSON에서 `max_tokens`가 된다.
+- 응답은 `ChatResponse`이고 예시 응답의 모든 필드를 담는다. 내용은 `choices[0].message.content: String?`, 종료 이유는 `choices[0].finishReason`, 토큰은 `usage.promptTokens`와 `usage.completionTokens`에서 읽는다.
+- 인터페이스는 `ChatClient { suspend fun chat(request: ChatRequest): Result<ChatResponse> }`이고, 구현은 `OpenAiClient(httpClient: HttpClient, apiKey: String, baseUrl: String = "https://api.openai.com")`이다.
+- 2xx가 아닌 응답은 `Result.failure(ChatApiException(status: Int, error: ErrorResponse?))`가 된다. 오류 본문이 JSON이 아니면 `error`는 `null`이다. 네트워크 예외도 `Result.failure`가 되고, `CancellationException`만 다시 던진다.
+- JSON은 `ignoreUnknownKeys = true`로 푼다.
 
 ### Task 3: 모델 응답기와 채팅 연결
 
