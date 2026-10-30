@@ -14,6 +14,7 @@ kotlin {
 dependencies {
     implementation(project(":framework"))
     implementation(libs.coroutines.core)
+    implementation(libs.ktor.client.cio)
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)
     testImplementation(libs.ktor.client.mock)

@@ -4,6 +4,7 @@ import aiagent.shop.fault.FaultPresets
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class ArgsTest {
     @Test
@@ -28,5 +29,29 @@ class ArgsTest {
     @Test
     fun unknownPresetFails() {
         assertFailsWith<IllegalArgumentException> { FaultPresets.get("chaos") }
+    }
+
+    @Test
+    fun responderOption() = assertEquals(
+        CliArgs("chat", 42, "none", responder = "model"),
+        parseArgs(arrayOf("chat", "--responder", "model")),
+    )
+
+    @Test
+    fun unknownResponderFails() {
+        assertFailsWith<IllegalArgumentException> { parseArgs(arrayOf("chat", "--responder", "magic")) }
+    }
+
+    @Test
+    fun scenariosRejectsResponderOption() {
+        assertFailsWith<IllegalArgumentException> { parseArgs(arrayOf("scenarios", "--responder", "model")) }
+    }
+
+    @Test
+    fun missingApiKeyIsReported() {
+        val e = assertFailsWith<IllegalArgumentException> { requireApiKey { null } }
+        assertTrue("OPENAI_API_KEY" in e.message!!)
+        assertFailsWith<IllegalArgumentException> { requireApiKey { " " } }
+        assertEquals("sk-x", requireApiKey { "sk-x" })
     }
 }
