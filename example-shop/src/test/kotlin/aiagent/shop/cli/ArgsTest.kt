@@ -4,6 +4,7 @@ import aiagent.shop.fault.FaultPresets
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ArgsTest {
@@ -53,5 +54,12 @@ class ArgsTest {
         assertTrue("OPENAI_API_KEY" in e.message!!)
         assertFailsWith<IllegalArgumentException> { requireApiKey { " " } }
         assertEquals("sk-x", requireApiKey { "sk-x" })
+    }
+
+    @Test
+    fun apiKeyIsTrimmedAndControlCharactersAreRejectedWithoutEcho() {
+        assertEquals("sk-x", requireApiKey { "sk-x\r\n" })
+        val e = assertFailsWith<IllegalArgumentException> { requireApiKey { "sk-sec ret" } }
+        assertFalse("sk-sec" in e.message!!)
     }
 }

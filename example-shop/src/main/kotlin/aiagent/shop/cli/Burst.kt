@@ -2,6 +2,7 @@ package aiagent.shop.cli
 
 import aiagent.framework.model.ChatApiException
 import aiagent.framework.model.ChatRequest
+import aiagent.framework.model.ErrorResponse
 import aiagent.framework.model.ModelPricing
 import aiagent.framework.model.OpenAiClient
 import io.ktor.client.HttpClient
@@ -19,7 +20,7 @@ data class BurstArgs(val count: Int, val concurrency: Int, val model: String?)
 
 private const val MAX_BURST_COUNT = 100
 
-/** 네트워크 예외처럼 HTTP 상태 코드를 받지 못한 요청을 세는 값이다. */
+/** 네트워크 예외나 응답 해석 실패처럼 HTTP 상태 코드를 받지 못한 요청을 세는 값이다. */
 private const val NO_STATUS = -1
 
 fun parseBurstArgs(args: Array<String>): BurstArgs {
@@ -55,7 +56,7 @@ suspend fun burst(count: Int, concurrency: Int, send: suspend () -> Int): Map<In
 suspend fun runBurst(args: BurstArgs, apiKey: String) {
     var lastRateLimitHeaders: Headers? = null
     var first429Headers: Headers? = null
-    var first429Message: String? = null
+    var first429Error: ErrorResponse? = null
     val captureHeaders = createClientPlugin("CaptureRateLimitHeaders") {
         onResponse { response ->
             lastRateLimitHeaders = response.headers
@@ -76,7 +77,7 @@ suspend fun runBurst(args: BurstArgs, apiKey: String) {
             client.chat(request).fold(
                 onSuccess = { 200 },
                 onFailure = { e ->
-                    if (e is ChatApiException && e.status == 429 && first429Message == null) first429Message = e.error?.error?.message
+                    if (e is ChatApiException && e.status == 429 && first429Error == null) first429Error = e.error
                     (e as? ChatApiException)?.status ?: NO_STATUS
                 },
             )
@@ -86,16 +87,22 @@ suspend fun runBurst(args: BurstArgs, apiKey: String) {
 
     println("걸린 시간: ${elapsed.inWholeMilliseconds}ms")
     println("상태 코드별 건수: " + counts.entries.sortedBy { it.key }.joinToString { (status, n) ->
-        "${if (status == NO_STATUS) "네트워크 오류" else status}=$n"
+        "${statusLabel(status)}=$n"
     })
     println("마지막 응답의 속도 제한 헤더:")
     printRateLimitHeaders(lastRateLimitHeaders)
     if (first429Headers != null) {
-        println("첫 429 응답의 메시지: ${first429Message ?: "오류 본문을 해석하지 못했습니다"}")
+        println("첫 429 응답의 오류: ${describeError(first429Error)}")
         println("첫 429 응답의 속도 제한 헤더:")
         printRateLimitHeaders(first429Headers)
     }
 }
+
+fun statusLabel(status: Int): String = if (status == NO_STATUS) "상태 코드 없음(예외)" else status.toString()
+
+/** 속도 제한과 크레딧 소진은 둘 다 429로 오므로, 둘을 가르는 code와 type을 함께 보여 준다. */
+fun describeError(error: ErrorResponse?): String =
+    error?.error?.let { "code=${it.code}, type=${it.type}, message=${it.message}" } ?: "오류 본문을 해석하지 못했습니다"
 
 private fun printRateLimitHeaders(headers: Headers?) {
     val lines = headers?.entries()

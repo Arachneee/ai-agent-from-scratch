@@ -1,5 +1,6 @@
 package aiagent.shop.cli
 
+import aiagent.framework.model.ErrorResponse
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import java.util.concurrent.atomic.AtomicInteger
@@ -51,4 +52,17 @@ class BurstTest {
         assertFailsWith<IllegalArgumentException> { parseBurstArgs(arrayOf("burst", "--count", "1000")) }
         assertFailsWith<IllegalArgumentException> { parseBurstArgs(arrayOf("burst", "--concurrency", "0")) }
     }
+
+    @Test
+    fun rateLimitDescriptionKeepsCodeAndType() {
+        val error = ErrorResponse(ErrorResponse.ErrorDetail("You exceeded your current quota", "insufficient_quota", null, "insufficient_quota"))
+        val text = describeError(error)
+        assertTrue("code=insufficient_quota" in text, text)
+        assertTrue("type=insufficient_quota" in text, text)
+        assertTrue("You exceeded your current quota" in text, text)
+    }
+
+    @Test
+    fun statusWithoutResponseIsNotCalledNetworkError() =
+        assertEquals("상태 코드 없음(예외)", statusLabel(-1))
 }

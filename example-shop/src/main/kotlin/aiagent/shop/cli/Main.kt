@@ -55,8 +55,10 @@ fun parseArgs(args: Array<String>): CliArgs {
 }
 
 fun requireApiKey(env: (String) -> String?): String {
-    val key = env("OPENAI_API_KEY")
-    require(!key.isNullOrBlank()) { "모델 응답기를 쓰려면 OPENAI_API_KEY 환경 변수에 API 키를 설정해야 합니다" }
+    val key = env("OPENAI_API_KEY")?.trim()
+    require(!key.isNullOrEmpty()) { "모델 응답기를 쓰려면 OPENAI_API_KEY 환경 변수에 API 키를 설정해야 합니다" }
+    // 헤더에 넣을 수 없는 문자가 있으면 Ktor 예외 메시지에 키 원문이 실리므로, 키를 보여 주지 않고 여기서 거부한다.
+    require(key.none { it.isWhitespace() || it.isISOControl() }) { "OPENAI_API_KEY에 공백이나 제어 문자가 들어 있습니다" }
     return key
 }
 
