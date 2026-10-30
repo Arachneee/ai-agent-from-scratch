@@ -11,9 +11,14 @@ class ArgsTest {
 
     @Test
     fun options() = assertEquals(
-        CliArgs("scenarios", 7, "flaky"),
-        parseArgs(arrayOf("scenarios", "--seed", "7", "--faults", "flaky")),
+        CliArgs("chat", 7, "flaky"),
+        parseArgs(arrayOf("chat", "--seed", "7", "--faults", "flaky")),
     )
+
+    @Test
+    fun scenariosRejectsFaultsOption() {
+        assertFailsWith<IllegalArgumentException> { parseArgs(arrayOf("scenarios", "--faults", "flaky")) }
+    }
 
     @Test
     fun unknownCommandFails() {

@@ -1,6 +1,7 @@
 package aiagent.shop.scenario
 
 import aiagent.shop.domain.OrderStatus
+import aiagent.shop.domain.ShipmentStatus
 import aiagent.shop.fault.FaultConfig
 import aiagent.shop.fault.ScheduledMutation
 import aiagent.shop.fault.ServiceFaults
@@ -28,6 +29,7 @@ object Scenarios {
                 mutations = listOf(
                     ScheduledMutation(1, "$ORDER_ID 배송 출발") {
                         it.putOrder(it.orders.getValue(ORDER_ID).copy(status = OrderStatus.SHIPPED))
+                        it.putShipment(it.shipments.getValue(ORDER_ID).copy(status = ShipmentStatus.IN_TRANSIT))
                     },
                 ),
             ),

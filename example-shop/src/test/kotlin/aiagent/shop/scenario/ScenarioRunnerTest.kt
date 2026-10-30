@@ -1,5 +1,8 @@
 package aiagent.shop.scenario
 
+import aiagent.shop.ShopWorld
+import aiagent.shop.domain.OrderStatus
+import aiagent.shop.domain.ShipmentStatus
 import aiagent.shop.fault.FaultConfig
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -36,6 +39,14 @@ class ScenarioRunnerTest {
     fun sameSeedSameResults() = runTest {
         val runner = ScenarioRunner(42) { RuleBasedResponder(it) }
         assertEquals(runner.run(Scenarios.all), runner.run(Scenarios.all))
+    }
+
+    @Test
+    fun refundAfterShippingMovesOrderAndShipmentTogether() = runTest {
+        val scenario = Scenarios.all.single { it.id == "refund-after-shipping" }
+        val w = ShopWorld.create(42, scenario.faults)
+        assertEquals(OrderStatus.SHIPPED, w.orders.getOrder("ORD-0001").status)
+        assertEquals(ShipmentStatus.IN_TRANSIT, w.shipping.getShipment("ORD-0001").status)
     }
 
     @Test

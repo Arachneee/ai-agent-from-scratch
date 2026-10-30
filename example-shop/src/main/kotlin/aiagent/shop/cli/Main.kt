@@ -13,7 +13,7 @@ data class CliArgs(val command: String, val seed: Long, val faults: String)
 
 private val COMMANDS = setOf("chat", "scenarios")
 
-private const val USAGE = "사용법: (chat | scenarios) [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale>]"
+private const val USAGE = "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale>] 또는 scenarios [--seed <정수>]"
 
 fun parseArgs(args: Array<String>): CliArgs {
     val command = args.firstOrNull()
@@ -25,7 +25,10 @@ fun parseArgs(args: Array<String>): CliArgs {
         val value = args.getOrNull(i + 1) ?: throw IllegalArgumentException("${args[i]}에 값이 없습니다")
         when (args[i]) {
             "--seed" -> seed = value.toLongOrNull() ?: throw IllegalArgumentException("시드는 정수여야 합니다: $value")
-            "--faults" -> faults = value
+            "--faults" -> {
+                require(command == "chat") { "scenarios는 시나리오마다 장애 설정이 정해져 있어 --faults를 받지 않습니다" }
+                faults = value
+            }
             else -> throw IllegalArgumentException("알 수 없는 옵션 '${args[i]}'")
         }
         i += 2
