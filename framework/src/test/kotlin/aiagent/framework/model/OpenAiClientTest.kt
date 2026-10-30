@@ -58,6 +58,18 @@ class OpenAiClientTest {
     }
 
     @Test
+    fun parsesToolCallResponse() = runTest {
+        val response = client { respond(fixture("chat-completion-tool-calls.json"), HttpStatusCode.OK, JSON_HEADERS) }
+            .chat(request).getOrThrow()
+
+        val call = response.choices[0].message.toolCalls!!.single()
+        assertEquals("call_wmZpVWpDAVRahYjHIoYmuxm5", call.id)
+        assertEquals("get_shipment", call.function.name)
+        assertEquals("""{"order_id":"ORD-0001"}""", call.function.arguments)
+        assertEquals("tool_calls", response.choices[0].finishReason)
+    }
+
+    @Test
     fun surfacesErrorResponse() = runTest {
         val result = client { respond(fixture("error-401.json"), HttpStatusCode.Unauthorized, JSON_HEADERS) }.chat(request)
 

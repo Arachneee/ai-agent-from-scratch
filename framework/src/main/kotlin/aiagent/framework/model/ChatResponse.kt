@@ -33,6 +33,21 @@ data class ChatResponse(
         val content: String?,
         val refusal: String?,
         val annotations: List<JsonElement>,
+        @SerialName("tool_calls")
+        val toolCalls: List<ToolCall>? = null,
+    )
+
+    @Serializable
+    data class ToolCall(
+        val id: String,
+        val type: String,
+        val function: FunctionCall,
+    )
+
+    @Serializable
+    data class FunctionCall(
+        val name: String,
+        val arguments: String,
     )
 
     @Serializable

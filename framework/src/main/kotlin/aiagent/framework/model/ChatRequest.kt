@@ -15,7 +15,11 @@ data class ChatRequest(
     @Serializable
     data class MessageRequest(
         val role: String,
-        val content: String,
+        val content: String?,
+        @SerialName("tool_call_id")
+        val toolCallId: String? = null,
+        @SerialName("tool_calls")
+        val toolCalls: List<ChatResponse.ToolCall>? = null,
     )
 
     @Serializable
@@ -38,9 +42,15 @@ data class ChatRequest(
         val required: List<String>,
     )
 
+    /** 인자 하나의 JSON 스키마다. 리스트, 중첩 객체, Map을 담기 위해 자기 자신을 품는다. */
     @Serializable
     data class Property(
         val type: String,
-        val description: String,
+        val description: String? = null,
+        val enum: List<String>? = null,
+        val items: Property? = null,
+        val properties: Map<String, Property>? = null,
+        val required: List<String>? = null,
+        val additionalProperties: Property? = null,
     )
 }

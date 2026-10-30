@@ -109,7 +109,13 @@ data class Property(val type: String, val description: String)
 - [ ] **Step 7: 검토하고 설명한다.** 완성된 코드를 처음부터 읽으며 질문 하나가 최종 답이 되기까지의 흐름을 설명한다. 학습자가 고르지 않은 동작이 숨어 있으면 짚는다. 툴 실행 중 예외가 나면 어떻게 되는지, 모델이 툴을 끝없이 부르면 어떻게 되는지가 그 예다. 이 동작은 고치지 않고 후반부 후보로 적는다.
 - [ ] **Step 8: 커밋한다.** 메시지는 `툴 호출 루프와 대화 기록을 프레임워크에 추가한다`.
 
-**확정된 모양:** Step 4에서 채운다.
+**확정된 모양:** 학습자가 다음과 같이 정했다. 설계 문서의 "스키마는 손으로 쓴다"는 결정은 이 Task에서 바뀌었다.
+
+- 응답: `ChatResponse.MessageResponse`에 `toolCalls: List<ToolCall>? = null`을 더한다. `ToolCall(id, type, function: FunctionCall(name, arguments: String))`이고, 인자는 문자열 그대로 받는다.
+- 요청 메시지: `MessageRequest(role, content: String?, toolCallId: String? = null, toolCalls: List<ChatResponse.ToolCall>? = null)`.
+- 스키마: `ChatRequest.Property`는 `type`, `description`, `enum`, `items`, `properties`, `required`, `additionalProperties`를 가진 재귀 구조이고 `type` 밖의 필드는 모두 null이 기본값이다. `toolParameters(descriptor)`가 입력 타입의 직렬화 설명자에서 스키마를 만든다. 클래스 필드마다 `@Description`이 있어야 하고 없으면 `IllegalArgumentException`이다. 기본값이 없는 필드만 필수이고, `T?`는 `T`와 같은 스키마이며, 다형 타입과 문맥 타입은 `IllegalArgumentException`이다.
+- 툴 실행: `ToolCatalog`에 `register<I, O>(name, description, execute: suspend (I) -> O)`로 등록한다. `definitions(names)`와 `execute(name, arguments)`는 이름으로 찾고, 없는 이름이면 `IllegalArgumentException`이다. 인자는 `ignoreUnknownKeys = true`로 풀고 결과는 JSON 문자열로 바꾼다.
+- 루프와 대화 기록: `Agent(client, catalog, settings: () -> AgentSettings, systemPrompt)`의 `run(message): TurnResult`와 `reset()`. `AgentSettings(model, temperature, maxTokens, toolNames)`이고 `toolNames`가 비면 툴을 싣지 않는다. `TurnResult(answer, usages: List<ChatResponse.Usage>, toolCalls: List<ExecutedToolCall(name, arguments, result)>)`. 응답의 `toolCalls`가 비면 반복을 끝낸다. 반복 횟수 상한은 두지 않는다. 기록에는 실패한 턴의 메시지도 남고, 툴 실행 예외는 `[툴 오류] <클래스 이름>: <메시지>`를 tool 결과로 돌려보낸다. `chat()`의 실패는 `run`이 예외로 던진다.
 
 ### Task 4: 쇼핑몰 툴 실행과 채팅 연결
 
