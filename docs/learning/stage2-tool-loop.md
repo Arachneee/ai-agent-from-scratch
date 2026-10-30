@@ -143,6 +143,38 @@ order_id: string,
 
 ## 마지막 확인
 
+다음 Spring AI 코드의 `.call()` 뒤에서 일어나는 일을 말로 설명했다.
+
+```kotlin
+class OrderTools(private val orders: OrderService) {
+    @Tool(description = "주문번호로 주문 상태를 조회한다")
+    fun getOrder(@ToolParam(description = "주문번호") orderId: String): String =
+        runBlocking { orders.getOrder(orderId).status.name }
+}
+
+val answer = chatClient.prompt()
+    .user("주문번호 ORD-0001 지금 어디쯤 왔어요?")
+    .tools(OrderTools(orderService))
+    .call()
+    .content()
+```
+
+### 답
+
+1. 툴 정의는 `tools` 필드에 함수 선언 글로 바뀌어 실린다.
+2. 툴 호출 응답은 `content`가 null이면서 툴 이름과 파라미터를 JSON 문자열로 준다.
+3. 프레임워크가 내부의 루프에서 툴을 찾아서 실행하고, 인자는 직렬화로 바꾼다.
+4. 실행 결과는 다음 요청의 메시지에 `content`로 들어간다.
+5. 루프는 더 이상 툴 호출이 없을 때 끝난다.
+
+### 검토
+
+- 1번은 두 단계를 하나로 묶었다. HTTP 요청의 `tools` 필드에 실리는 것은 JSON 스키마다. Spring AI가 메서드 이름, `@Tool`의 설명, 파라미터 타입과 `@ToolParam`의 설명에서 이 스키마를 만든다. 함수 선언 글로 바꾸는 일은 요청을 받은 OpenAI 서버가 모델에 넣기 전에 한다. 첫 실험에서 토큰 수로 추정한 그 변환이다.
+- 2번은 맞다. 빠진 것은 `finish_reason`이 `tool_calls`라는 점과, 툴 호출마다 결과의 짝을 맞출 `id`가 붙는다는 점이다.
+- 3번에서 툴을 찾는 방식은 직접 만든 `ToolCatalog`와 같다. Spring AI는 툴을 이름으로 등록해 두고, 응답의 툴 이름으로 찾는다. 인자 문자열을 `orderId: String`으로 바꾸는 일은 직렬화가 아니라 역직렬화다. 반환값을 tool 결과 문자열로 바꾸는 일이 직렬화다. `@Tool` 메서드가 `suspend`가 아니어서 `runBlocking`으로 스레드를 막는다는 점도 이 코드에서 보인다.
+- 4번에서 빠진 것이 있다. 결과는 `role`이 `tool`인 메시지의 `content`에 들어가고, 같은 메시지의 `tool_call_id`에 툴 호출의 `id`가 들어간다. 그 앞에는 모델이 보낸 assistant의 툴 호출 메시지가 그대로 다시 들어가야 한다.
+- 5번은 맞다. 응답의 툴 호출 목록이 비면 그 응답의 `content`가 `.content()`의 값이 된다.
+
 ## 후반부로 넘길 문제
 
 툴 호출 루프를 완성한 뒤 코드를 함께 읽으며 찾은 동작이다. 학습자가 고르지 않은 동작이고, 전반부에서는 고치지 않았다.
