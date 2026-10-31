@@ -126,43 +126,71 @@ private suspend fun chatLoop(responder: Responder, onCommand: ((String) -> Unit)
             onCommand(line)
             continue
         }
-        runChatTurn(responder, line, ::println)
+        runChatTurn(responder, line, ::println, {
+            print(it)
+            System.out.flush()
+        })
     }
 }
 
 /**
  * 한 턴을 처리하고 출력한다. 예외가 나도 채팅이 끝나지 않도록 오류 문장으로 보여 준다.
+ * 줄은 [out]으로, 모델이 쓰는 글자 조각은 줄바꿈 없이 [write]로 찍는다. 글자 조각 뒤에 줄이 오면 먼저 줄을 바꾼다.
+ * 툴은 실행하기 직전에 `[툴 호출]` 줄로 보여 주고, 스트리밍으로 이미 찍은 답은 다시 찍지 않는다.
  * 모델 응답기이면 마지막에 이 턴에서 처음 무언가를 출력하기까지의 시간과 답을 출력하기까지의 시간을 보여 준다.
  */
 suspend fun runChatTurn(
     responder: Responder,
     line: String,
     out: (String) -> Unit,
+    write: (String) -> Unit,
     timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     val start = timeSource.markNow()
     var firstOutput: Duration? = null
-    val timedOut = { text: String ->
+    var midLine = false
+    val streamed = StringBuilder()
+    val printLine = { text: String ->
         if (firstOutput == null) firstOutput = start.elapsedNow()
+        if (midLine) write("\n")
+        midLine = false
         out(text)
     }
+    val printFragment = { text: String ->
+        if (firstOutput == null) firstOutput = start.elapsedNow()
+        write(text)
+        midLine = true
+        streamed.append(text)
+    }
     try {
-        val reply = if (responder is ModelResponder) responder.respond(line) { if (it is AgentEvent.TextDelta) timedOut(it.text) } else responder.respond(line)
-        if (responder is ModelResponder) {
-            responder.lastToolCalls.forEach { timedOut("[툴] ${it.name} ${it.arguments} 결과: ${it.result}") }
+        val reply = if (responder is ModelResponder) {
+            responder.respond(line) { event ->
+                when (event) {
+                    is AgentEvent.TextDelta -> printFragment(event.text)
+                    is AgentEvent.ToolCallStarted -> {
+                        printLine("[툴 호출] ${event.name} ${event.arguments}")
+                        streamed.clear()
+                    }
+                }
+            }
+        } else {
+            responder.respond(line)
         }
-        timedOut(reply)
+        if (reply != streamed.toString()) printLine(reply)
+        if (responder is ModelResponder) {
+            responder.lastToolCalls.forEach { printLine("[툴] ${it.name} ${it.arguments} 결과: ${it.result}") }
+        }
     } catch (e: CancellationException) {
         throw e
     } catch (e: ServiceException) {
-        timedOut("[서비스 오류] ${e.message}")
+        printLine("[서비스 오류] ${e.message}")
     } catch (e: Exception) {
-        timedOut("[오류] ${e::class.simpleName}: ${e.message}")
+        printLine("[오류] ${e::class.simpleName}: ${e.message}")
     }
     val total = start.elapsedNow()
     if (responder is ModelResponder) {
-        responder.lastUsages.forEach { out(usageLine(it)) }
-        out("[시간] 첫 출력 %.1f초 · 전체 %.1f초".format(firstOutput!!.inWholeMilliseconds / 1000.0, total.inWholeMilliseconds / 1000.0))
+        responder.lastUsages.forEach { printLine(usageLine(it)) }
+        printLine("[시간] 첫 출력 %.1f초 · 전체 %.1f초".format(firstOutput!!.inWholeMilliseconds / 1000.0, total.inWholeMilliseconds / 1000.0))
     }
 }
 

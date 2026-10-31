@@ -14,6 +14,7 @@ import aiagent.shop.scenario.Responder
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TestTimeSource
@@ -23,7 +24,7 @@ class ChatTurnTest {
     fun chatTurnSurvivesUnexpectedException() = runTest {
         val out = mutableListOf<String>()
 
-        runChatTurn(Responder { throw IllegalStateException("깨짐") }, "안녕", out::add)
+        runChatTurn(Responder { throw IllegalStateException("깨짐") }, "안녕", out::add, {})
 
         assertEquals(listOf("[오류] IllegalStateException: 깨짐"), out)
     }
@@ -32,7 +33,7 @@ class ChatTurnTest {
     fun serviceExceptionIsShownAsServiceError() = runTest {
         val out = mutableListOf<String>()
 
-        runChatTurn(Responder { throw ServiceException.NotFound("주문", "ORD-9999") }, "안녕", out::add)
+        runChatTurn(Responder { throw ServiceException.NotFound("주문", "ORD-9999") }, "안녕", out::add, {})
 
         assertEquals(listOf("[서비스 오류] 주문 ORD-9999 없음"), out)
     }
@@ -41,19 +42,59 @@ class ChatTurnTest {
     fun timingLineReportsFirstOutputAndTotal() = runTest {
         val time = TestTimeSource()
         val client = AdvancingChatClient(time, listOf(1.seconds to toolCall("확인해 볼게요"), 2.seconds to answer("출고 대기입니다.")))
-        val settings = ModelSettings(ModelPricing.DEFAULT_MODEL, temperature = null, maxTokens = null, showRaw = false)
-        val responder = ModelResponder(client, ShopTools(ShopWorld.create(42)), { settings })
         val out = mutableListOf<String>()
 
-        runChatTurn(responder, "ORD-0001 배송 상태 알려주세요.", out::add, time)
+        runChatTurn(responder(client), "ORD-0001 배송 상태 알려주세요.", out::add, {}, time)
 
         assertEquals("[시간] 첫 출력 1.0초 · 전체 3.0초", out.last())
+    }
+
+    @Test
+    fun toolProgressLineIsShownBeforeExecution() = runTest {
+        val time = TestTimeSource()
+        val client = AdvancingChatClient(time, listOf(Duration.ZERO to toolCall(null), Duration.ZERO to answer("출고 대기입니다.")))
+        val log = mutableListOf<String>()
+
+        runChatTurn(responder(client), "ORD-0001 배송 상태 알려주세요.", { log += "out:$it" }, { log += "write:$it" }, time)
+
+        assertEquals("""out:[툴 호출] get_shipment {"order_id":"ORD-0001"}""", log[0])
+        assertEquals(listOf("write:출고 대기입니다.", "write:\n"), log.subList(1, 3))
+        assertTrue(log[3].startsWith("out:[툴] get_shipment "), log[3])
+    }
+
+    @Test
+    fun streamedAnswerIsNotPrintedTwiceAndEndsWithNewline() = runTest {
+        val time = TestTimeSource()
+        val client = AdvancingChatClient(time, listOf(Duration.ZERO to answer("배송 준비 중입니다.")), pieces = { listOf("배송 ", "준비 중입니다.") })
+        val log = mutableListOf<String>()
+
+        runChatTurn(responder(client), "어디쯤 왔어요?", { log += "out:$it" }, { log += "write:$it" }, time)
+
+        assertEquals(listOf("write:배송 ", "write:준비 중입니다.", "write:\n"), log.subList(0, 3))
+        assertTrue(log.drop(3).all { it.startsWith("out:[토큰]") || it.startsWith("out:[시간]") }, log.toString())
+    }
+
+    @Test
+    fun answerThatWasNotStreamedIsPrinted() = runTest {
+        val time = TestTimeSource()
+        val client = AdvancingChatClient(time, listOf(Duration.ZERO to answer(null)))
+        val log = mutableListOf<String>()
+
+        runChatTurn(responder(client), "어디쯤 왔어요?", { log += "out:$it" }, { log += "write:$it" }, time)
+
+        assertEquals("out:[빈 응답] finish_reason=stop", log[0])
+    }
+
+    private fun responder(client: ChatClient): ModelResponder {
+        val settings = ModelSettings(ModelPricing.DEFAULT_MODEL, temperature = null, maxTokens = null, showRaw = false)
+        return ModelResponder(client, ShopTools(ShopWorld.create(42)), { settings })
     }
 
     /** 요청을 받을 때마다 정해 둔 만큼 시간을 진행한 뒤 응답을 돌려준다. */
     private class AdvancingChatClient(
         private val time: TestTimeSource,
         private val steps: List<Pair<Duration, ChatResponse>>,
+        private val pieces: (String) -> List<String> = { listOf(it) },
     ) : ChatClient {
         private var calls = 0
 
@@ -65,7 +106,7 @@ class ChatTurnTest {
 
         override suspend fun chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse {
             val response = chat(request).getOrThrow()
-            response.choices.single().message.content?.let { text ->
+            response.choices.single().message.content?.let(pieces)?.forEach { text ->
                 onChunk(ChatChunk(response.id, 0, response.model, listOf(ChatChunk.Choice(0, ChatChunk.Delta(content = text), null)), null, "default", "fp_test"))
             }
             return response
@@ -73,7 +114,7 @@ class ChatTurnTest {
     }
 
     private companion object {
-        fun toolCall(content: String) = response(
+        fun toolCall(content: String?) = response(
             ChatResponse.MessageResponse(
                 "assistant", content, null, emptyList(),
                 listOf(ChatResponse.ToolCall("call_1", "function", ChatResponse.FunctionCall("get_shipment", """{"order_id":"ORD-0001"}"""))),
@@ -81,7 +122,7 @@ class ChatTurnTest {
             "tool_calls",
         )
 
-        fun answer(content: String) = response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), "stop")
+        fun answer(content: String?) = response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), "stop")
 
         fun response(message: ChatResponse.MessageResponse, finishReason: String) = ChatResponse(
             id = "chatcmpl-test",
