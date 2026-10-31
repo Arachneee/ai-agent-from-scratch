@@ -1,0 +1,28 @@
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"role":"assistant","content":"","refusal":null},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"uCXohVEue"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"안"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"G8NWy2qwam"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"녕하세요"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"7GXs7Yo"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"!"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"Sc4MCNQedt"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":" 어떻게"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"ORkEUI4"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":" 도"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"9HWuiqmzh"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"와"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"T5BRIBQSyy"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"드"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"P2b8ilgW2n"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"릴"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"7dLhzn0m0D"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"까요"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"EJATSd3nk"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{"content":"?"},"logprobs":null,"finish_reason":null}],"usage":null,"obfuscation":"Pba9QY8V1x"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[{"index":0,"delta":{},"logprobs":null,"finish_reason":"stop"}],"usage":null,"obfuscation":"n1dni"}
+
+data: {"id":"chatcmpl-Eew2ayvExaW7v8CP8U0kd4u0Vbqwr","object":"chat.completion.chunk","created":1793424936,"model":"gpt-4o-mini-2024-07-18","service_tier":"default","system_fingerprint":"fp_73c5e31c8b","choices":[],"usage":{"prompt_tokens":54,"completion_tokens":10,"total_tokens":64,"prompt_tokens_details":{"cached_tokens":0,"audio_tokens":0},"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":0,"accepted_prediction_tokens":0,"rejected_prediction_tokens":0}},"obfuscation":"fuUAFWsowU"}
+
+data: [DONE]
+

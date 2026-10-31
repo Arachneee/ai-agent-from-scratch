@@ -11,7 +11,16 @@ data class ChatRequest(
     @SerialName("max_tokens")
     val maxTokens: Int? = null,
     val tools: List<Tool>? = null,
+    val stream: Boolean? = null,
+    @SerialName("stream_options")
+    val streamOptions: StreamOptions? = null,
 ) {
+    @Serializable
+    data class StreamOptions(
+        @SerialName("include_usage")
+        val includeUsage: Boolean,
+    )
+
     @Serializable
     data class MessageRequest(
         val role: String,

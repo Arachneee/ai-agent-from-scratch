@@ -78,7 +78,7 @@
 - [ ] **Step 7: 실험마다 같은 순서를 지킨다.** 학습자의 예측을 먼저 옮기고, 학습자가 실행하고, 결과와 이유를 학습자의 말로 옮긴 뒤 Claude가 검토한다.
 - [ ] **Step 8: 커밋한다.** 메시지는 `스트리밍 요청 필드와 스트림 원문 실험을 기록한다`.
 
-**확정된 모양:** (Task 2에서 채운다)
+**확정된 모양:** `ChatRequest`에 `val stream: Boolean? = null`과 `@SerialName("stream_options") val streamOptions: StreamOptions? = null`을 더한다. `StreamOptions`는 `ChatRequest` 안의 하위 클래스이고 `@SerialName("include_usage") val includeUsage: Boolean` 하나를 기본값 없이 가진다. 두 필드가 null이면 요청 JSON에서 키가 빠진다.
 
 ### Task 3: 스트림 읽기, 조각 읽기, 조립
 
