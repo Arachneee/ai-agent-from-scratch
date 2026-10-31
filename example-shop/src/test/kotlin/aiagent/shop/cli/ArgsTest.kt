@@ -1,6 +1,9 @@
 package aiagent.shop.cli
 
+import aiagent.shop.ShopWorld
 import aiagent.shop.fault.FaultPresets
+import aiagent.shop.fault.ServiceException
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -61,5 +64,12 @@ class ArgsTest {
         assertEquals("sk-x", requireApiKey { "sk-x\r\n" })
         val e = assertFailsWith<IllegalArgumentException> { requireApiKey { "sk-sec ret" } }
         assertFalse("sk-sec" in e.message!!)
+    }
+
+    @Test
+    fun downPresetFailsEveryCall() = runTest {
+        val world = ShopWorld.create(42, FaultPresets.get("down"))
+
+        repeat(5) { assertFailsWith<ServiceException.Unavailable> { world.shipping.getShipment("ORD-0001") } }
     }
 }

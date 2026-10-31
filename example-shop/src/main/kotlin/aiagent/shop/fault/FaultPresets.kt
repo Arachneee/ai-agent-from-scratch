@@ -7,6 +7,7 @@ object FaultPresets {
         "flaky" to allServices(ServiceFaults(errorRate = 0.2)),
         "rate-limited" to allServices(ServiceFaults(rateLimitEvery = 3)),
         "stale" to allServices(ServiceFaults(staleReadRate = 0.5)),
+        "down" to allServices(ServiceFaults(errorRate = 1.0)),
     )
 
     fun get(name: String): FaultConfig =

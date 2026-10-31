@@ -26,7 +26,7 @@ private val COMMANDS = setOf("chat", "scenarios")
 private val RESPONDERS = setOf("rule", "model")
 
 private const val USAGE =
-    "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale>] [--responder <rule|model>], " +
+    "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale|down>] [--responder <rule|model>], " +
         "scenarios [--seed <정수>], 또는 burst [--count <1~100>] [--concurrency <1~100>] [--model <이름>]"
 
 fun parseArgs(args: Array<String>): CliArgs {
