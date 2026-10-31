@@ -278,3 +278,7 @@ val answer = chatClient.prompt()
 - `get_order`는 `OrderView(id, items, status, statusLabel, orderedAt)`를 돌려준다. `items`의 원소는 `sku`, `name`, `quantity`, `unitPrice`를 가진다. 답에 쓰이지 않는 `customerId`는 뺐다.
 - `get_shipment`는 `ShipmentView(orderId, status, statusLabel, eta)`를 돌려준다.
 - 상태 문구는 정규식 응답기가 쓰는 `label()`을 그대로 써서, 두 응답기가 같은 말을 쓴다.
+
+### 고친 뒤의 결과
+
+같은 질문을 다시 보냈다. 답은 상품명 "노트북 거치대", 수량 3개, 단가 39,000원을 나열하고 주문 상태를 "상품 준비 중"이라고 전했다. 상품 코드는 답에서 사라졌다. 입력 토큰은 149개에서 242개로 93개 늘어, 고치기 전보다 9개 많다. 상품 이름과 상태 문구가 늘고 고객 ID가 줄어든 결과다.
