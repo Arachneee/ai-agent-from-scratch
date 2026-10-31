@@ -136,6 +136,63 @@ class AgentTest {
     }
 
     @Test
+    fun toolAtLimitIsRemovedFromToolList() = runTest {
+        val shipment = { id: String -> toolCalls(call(id, "get_shipment")) }
+        val client = FakeChatClient(listOf(shipment("call_1"), shipment("call_2"), answer("답")))
+
+        agent(client, settings.copy(maxCallsPerTool = 2)).run("어디쯤 왔어요?")
+
+        assertEquals(listOf("get_order", "get_shipment"), client.requests[1].tools!!.map { it.function.name })
+        assertEquals(listOf("get_order"), client.requests[2].tools!!.map { it.function.name })
+    }
+
+    @Test
+    fun callBeyondLimitIsNotExecuted() = runTest {
+        val client = FakeChatClient(
+            listOf(toolCalls(call("call_1", "get_shipment"), call("call_2", "get_shipment")), toolCalls(call("call_3", "get_shipment")), answer("답")),
+        )
+
+        val result = agent(client, settings.copy(maxCallsPerTool = 1)).run("어디쯤 왔어요?")
+
+        assertEquals(listOf("get_shipment"), executed)
+        val blocked = "[툴 오류] get_shipment는 이번 턴에 더 쓸 수 없습니다"
+        assertEquals(listOf("\"READY\"", blocked), client.requests[1].messages.filter { it.role == "tool" }.map { it.content })
+        assertEquals(blocked, client.requests[2].messages.last().content)
+        assertEquals("call_3", client.requests[2].messages.last().toolCallId)
+        assertEquals(listOf("\"READY\"", blocked, blocked), result.toolCalls.map { it.result })
+    }
+
+    @Test
+    fun exhaustingEveryToolOmitsToolsKey() = runTest {
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_order")), toolCalls(call("call_2", "get_shipment")), answer("답")))
+
+        agent(client, settings.copy(maxCallsPerTool = 1)).run("주문이랑 배송 알려 주세요.")
+
+        assertNull(client.requests[2].tools)
+    }
+
+    @Test
+    fun limitResetsEveryTurn() = runTest {
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_shipment")), answer("답"), answer("답")))
+        val agent = agent(client, settings.copy(maxCallsPerTool = 1))
+
+        agent.run("어디쯤 왔어요?")
+        agent.run("다시 알려 주세요.")
+
+        assertEquals(listOf("get_order", "get_shipment"), client.requests[2].tools!!.map { it.function.name })
+    }
+
+    @Test
+    fun nullLimitAllowsAnyNumberOfCalls() = runTest {
+        val calls = (1..5).map { toolCalls(call("call_$it", "get_shipment")) }
+        val client = FakeChatClient(calls + answer("답"))
+
+        agent(client, settings.copy(maxCallsPerTool = null)).run("어디쯤 왔어요?")
+
+        assertEquals(5, executed.size)
+    }
+
+    @Test
     fun noToolNamesOmitsToolsKey() = runTest {
         val client = FakeChatClient(listOf(answer("답")))
 
