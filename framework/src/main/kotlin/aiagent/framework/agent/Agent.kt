@@ -27,6 +27,7 @@ data class TurnResult(
  * 대화 기록을 들고 모델과 툴로 한 턴을 처리한다.
  * 응답에 툴 호출이 있으면 실행하고 결과를 돌려보내기를 툴 호출이 없는 응답이 올 때까지 반복한다.
  * 기록에는 실패한 턴의 메시지도 남는다. 툴 실행이 예외로 끝나면 예외 문장을 툴 결과로 돌려보낸다.
+ * 툴 호출 응답에 함께 온 문장은 툴을 실행하기 전에 `onProgress`로 바로 알린다.
  */
 class Agent(
     private val client: ChatClient,
@@ -36,7 +37,7 @@ class Agent(
 ) {
     private val history = mutableListOf<ChatRequest.MessageRequest>()
 
-    suspend fun run(message: String): TurnResult {
+    suspend fun run(message: String, onProgress: (String) -> Unit = {}): TurnResult {
         val current = settings()
         val tools = current.toolNames.takeIf { it.isNotEmpty() }?.let(catalog::definitions)
         val usages = mutableListOf<ChatResponse.Usage>()
@@ -60,6 +61,7 @@ class Agent(
                 return TurnResult(content.ifEmpty { "[빈 응답] finish_reason=${choice.finishReason}" }, usages, executed)
             }
             history += ChatRequest.MessageRequest("assistant", choice.message.content, toolCalls = calls)
+            choice.message.content?.takeIf { it.isNotEmpty() }?.let(onProgress)
             for (call in calls) {
                 val result = execute(call)
                 executed += ExecutedToolCall(call.function.name, call.function.arguments, result)

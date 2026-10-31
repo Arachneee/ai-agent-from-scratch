@@ -39,6 +39,16 @@ class ModelResponderTest {
     }
 
     @Test
+    fun progressIsPassedToCaller() = runTest {
+        val client = FakeChatClient(listOf(toolCall("get_shipment", content = "다시 한 번 시도해 보겠습니다."), ok("출고 대기입니다.")))
+        val progress = mutableListOf<String>()
+
+        responder(client).respond("주문번호 ORD-0001 지금 어디쯤 왔어요?", progress::add)
+
+        assertEquals(listOf("다시 한 번 시도해 보겠습니다."), progress)
+    }
+
+    @Test
     fun toolsAreSentWhenEnabled() = runTest {
         val client = FakeChatClient(listOf(ok("답")))
         responder(client, settings.copy(toolsEnabled = true)).respond("안녕")
@@ -128,9 +138,9 @@ class ModelResponderTest {
 
         fun rateLimited(): Result<ChatResponse> = Result.failure(ChatApiException(429, null))
 
-        fun toolCall(name: String, promptTokens: Int = 10) = response(
+        fun toolCall(name: String, promptTokens: Int = 10, content: String? = null) = response(
             ChatResponse.MessageResponse(
-                "assistant", null, null, emptyList(),
+                "assistant", content, null, emptyList(),
                 listOf(ChatResponse.ToolCall("call_1", "function", ChatResponse.FunctionCall(name, """{"order_id":"ORD-0001"}"""))),
             ),
             "tool_calls", promptTokens, 19,

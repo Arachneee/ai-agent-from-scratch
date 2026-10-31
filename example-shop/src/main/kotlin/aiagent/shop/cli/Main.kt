@@ -130,7 +130,7 @@ private suspend fun chatLoop(responder: Responder, onCommand: ((String) -> Unit)
 /** 한 턴을 처리하고 출력한다. 예외가 나도 채팅이 끝나지 않도록 오류 문장으로 보여 준다. */
 suspend fun runChatTurn(responder: Responder, line: String, out: (String) -> Unit) {
     try {
-        val reply = responder.respond(line)
+        val reply = if (responder is ModelResponder) responder.respond(line, out) else responder.respond(line)
         if (responder is ModelResponder) {
             responder.lastToolCalls.forEach { out("[툴] ${it.name} ${it.arguments} 결과: ${it.result}") }
         }

@@ -13,6 +13,7 @@ data class CallUsage(val inputTokens: Int, val outputTokens: Int, val costUsd: D
 /**
  * 프레임워크의 [Agent]를 쇼핑몰의 [Responder]로 쓰게 한다. 대화 기록과 툴 호출 루프는 [Agent]가 맡는다.
  * 모델 API 오류는 답 대신 `[모델 오류]` 문장으로 보여 준다.
+ * 툴 호출 중에 모델이 쓴 문장은 `onProgress`로 턴이 끝나기 전에 넘긴다.
  */
 class ModelResponder(
     client: ChatClient,
@@ -28,12 +29,14 @@ class ModelResponder(
     var lastToolCalls: List<ExecutedToolCall> = emptyList()
         private set
 
-    override suspend fun respond(message: String): String {
+    override suspend fun respond(message: String): String = respond(message) {}
+
+    suspend fun respond(message: String, onProgress: (String) -> Unit): String {
         lastUsages = emptyList()
         lastToolCalls = emptyList()
         val model = settings().model
         val result = try {
-            agent.run(message)
+            agent.run(message, onProgress)
         } catch (e: ChatApiException) {
             return "[모델 오류] ${e.status} ${e.error?.error?.message ?: "오류 본문을 해석하지 못했습니다"}"
         }

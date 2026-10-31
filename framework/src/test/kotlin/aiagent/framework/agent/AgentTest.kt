@@ -116,6 +116,26 @@ class AgentTest {
     }
 
     @Test
+    fun progressShowsContentOfToolCallResponseBeforeNextRequest() = runTest {
+        val events = mutableListOf<String>()
+        val client = object : ChatClient {
+            val results = listOf(
+                toolCalls(call("call_1", "get_shipment"), content = "다시 한 번 시도해 보겠습니다."),
+                toolCalls(call("call_2", "get_shipment")),
+                answer("출고 대기입니다."),
+            )
+            override suspend fun chat(request: ChatRequest): Result<ChatResponse> {
+                events += "request"
+                return results[events.count { it == "request" } - 1]
+            }
+        }
+
+        agent(client).run("어디쯤 왔어요?") { events += "progress: $it" }
+
+        assertEquals(listOf("request", "progress: 다시 한 번 시도해 보겠습니다.", "request", "request"), events)
+    }
+
+    @Test
     fun noToolNamesOmitsToolsKey() = runTest {
         val client = FakeChatClient(listOf(answer("답")))
 
@@ -161,8 +181,8 @@ class AgentTest {
 
         fun call(id: String, name: String) = ChatResponse.ToolCall(id, "function", ChatResponse.FunctionCall(name, ARGS))
 
-        fun toolCalls(vararg calls: ChatResponse.ToolCall, promptTokens: Int = 10) =
-            response(ChatResponse.MessageResponse("assistant", null, null, emptyList(), calls.toList()), "tool_calls", promptTokens)
+        fun toolCalls(vararg calls: ChatResponse.ToolCall, promptTokens: Int = 10, content: String? = null) =
+            response(ChatResponse.MessageResponse("assistant", content, null, emptyList(), calls.toList()), "tool_calls", promptTokens)
 
         fun answer(content: String?, finishReason: String = "stop", promptTokens: Int = 10) =
             response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), finishReason, promptTokens)
