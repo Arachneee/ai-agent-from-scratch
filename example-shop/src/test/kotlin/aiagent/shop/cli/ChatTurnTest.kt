@@ -14,6 +14,7 @@ import aiagent.shop.scenario.Responder
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -53,36 +54,53 @@ class ChatTurnTest {
     fun toolProgressLineIsShownBeforeExecution() = runTest {
         val time = TestTimeSource()
         val client = AdvancingChatClient(time, listOf(Duration.ZERO to toolCall(null), Duration.ZERO to answer("출고 대기입니다.")))
-        val log = mutableListOf<String>()
+        val printed = StringBuilder()
+        val console = ConsoleOutput { printed.append(it) }
 
-        runChatTurn(responder(client), "ORD-0001 배송 상태 알려주세요.", { log += "out:$it" }, { log += "write:$it" }, time)
+        runChatTurn(responder(client), "ORD-0001 배송 상태 알려주세요.", console::line, console::fragment, time)
 
-        assertEquals("""out:[툴 호출] get_shipment {"order_id":"ORD-0001"}""", log[0])
-        assertEquals(listOf("write:출고 대기입니다.", "write:\n"), log.subList(1, 3))
-        assertTrue(log[3].startsWith("out:[툴] get_shipment "), log[3])
+        assertTrue(
+            printed.startsWith("[툴 호출] get_shipment {\"order_id\":\"ORD-0001\"}\n출고 대기입니다.\n[툴] get_shipment "),
+            printed.toString(),
+        )
     }
 
     @Test
     fun streamedAnswerIsNotPrintedTwiceAndEndsWithNewline() = runTest {
         val time = TestTimeSource()
         val client = AdvancingChatClient(time, listOf(Duration.ZERO to answer("배송 준비 중입니다.")), pieces = { listOf("배송 ", "준비 중입니다.") })
-        val log = mutableListOf<String>()
+        val printed = StringBuilder()
+        val console = ConsoleOutput { printed.append(it) }
 
-        runChatTurn(responder(client), "어디쯤 왔어요?", { log += "out:$it" }, { log += "write:$it" }, time)
+        runChatTurn(responder(client), "어디쯤 왔어요?", console::line, console::fragment, time)
 
-        assertEquals(listOf("write:배송 ", "write:준비 중입니다.", "write:\n"), log.subList(0, 3))
-        assertTrue(log.drop(3).all { it.startsWith("out:[토큰]") || it.startsWith("out:[시간]") }, log.toString())
+        assertTrue(printed.startsWith("배송 준비 중입니다.\n[토큰]"), printed.toString())
+        assertEquals(1, printed.split("배송 준비 중입니다.").size - 1)
+    }
+
+    @Test
+    fun rawLogAfterStreamedTextAddsNoBlankLine() = runTest {
+        val time = TestTimeSource()
+        val printed = StringBuilder()
+        val console = ConsoleOutput { printed.append(it) }
+        val client = AdvancingChatClient(time, listOf(Duration.ZERO to answer("배송 준비 중입니다.")), afterStream = { console.line("RESPONSE: 200 OK") })
+
+        runChatTurn(responder(client), "어디쯤 왔어요?", console::line, console::fragment, time)
+
+        assertTrue(printed.startsWith("배송 준비 중입니다.\nRESPONSE: 200 OK\n[토큰]"), printed.toString())
+        assertFalse("\n\n" in printed, printed.toString())
     }
 
     @Test
     fun answerThatWasNotStreamedIsPrinted() = runTest {
         val time = TestTimeSource()
         val client = AdvancingChatClient(time, listOf(Duration.ZERO to answer(null)))
-        val log = mutableListOf<String>()
+        val printed = StringBuilder()
+        val console = ConsoleOutput { printed.append(it) }
 
-        runChatTurn(responder(client), "어디쯤 왔어요?", { log += "out:$it" }, { log += "write:$it" }, time)
+        runChatTurn(responder(client), "어디쯤 왔어요?", console::line, console::fragment, time)
 
-        assertEquals("out:[빈 응답] finish_reason=stop", log[0])
+        assertTrue(printed.startsWith("[빈 응답] finish_reason=stop\n"), printed.toString())
     }
 
     private fun responder(client: ChatClient): ModelResponder {
@@ -90,11 +108,12 @@ class ChatTurnTest {
         return ModelResponder(client, ShopTools(ShopWorld.create(42)), { settings })
     }
 
-    /** 요청을 받을 때마다 정해 둔 만큼 시간을 진행한 뒤 응답을 돌려준다. */
+    /** 요청을 받을 때마다 정해 둔 만큼 시간을 진행한 뒤 응답을 돌려준다. 스트림이 끝나면 [afterStream]을 부른다. 원문 로그가 이 시점에 찍힌다. */
     private class AdvancingChatClient(
         private val time: TestTimeSource,
         private val steps: List<Pair<Duration, ChatResponse>>,
         private val pieces: (String) -> List<String> = { listOf(it) },
+        private val afterStream: () -> Unit = {},
     ) : ChatClient {
         private var calls = 0
 
@@ -109,6 +128,7 @@ class ChatTurnTest {
             response.choices.single().message.content?.let(pieces)?.forEach { text ->
                 onChunk(ChatChunk(response.id, 0, response.model, listOf(ChatChunk.Choice(0, ChatChunk.Delta(content = text), null)), null, "default", "fp_test"))
             }
+            afterStream()
             return response
         }
     }

@@ -136,7 +136,7 @@ private suspend fun chatLoop(console: ConsoleOutput, responder: Responder, onCom
 
 /**
  * 한 턴을 처리하고 출력한다. 예외가 나도 채팅이 끝나지 않도록 오류 문장으로 보여 준다.
- * 줄은 [out]으로, 모델이 쓰는 글자 조각은 줄바꿈 없이 [write]로 찍는다. 글자 조각 뒤에 줄이 오면 먼저 줄을 바꾼다.
+ * 줄은 [out]으로, 모델이 쓰는 글자 조각은 줄바꿈 없이 [write]로 찍는다. 글자 조각 뒤에 줄이 오면 먼저 줄을 바꾸는 일은 [out]이 맡는다.
  * 툴은 실행하기 직전에 `[툴 호출]` 줄로 보여 주고, 스트리밍으로 이미 찍은 답은 다시 찍지 않는다.
  * 모델 응답기이면 마지막에 이 턴에서 처음 무언가를 출력하기까지의 시간과 답을 출력하기까지의 시간을 보여 준다.
  */
@@ -149,18 +149,14 @@ suspend fun runChatTurn(
 ) {
     val start = timeSource.markNow()
     var firstOutput: Duration? = null
-    var midLine = false
     val streamed = StringBuilder()
     val printLine = { text: String ->
         if (firstOutput == null) firstOutput = start.elapsedNow()
-        if (midLine) write("\n")
-        midLine = false
         out(text)
     }
     val printFragment = { text: String ->
         if (firstOutput == null) firstOutput = start.elapsedNow()
         write(text)
-        midLine = true
         streamed.append(text)
     }
     try {
