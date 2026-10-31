@@ -131,6 +131,15 @@ class ModelResponderTest {
         assertEquals(0.15, usage.costUsd!!, 1e-9)
     }
 
+    @Test
+    fun cachedTokensAreRecorded() = runTest {
+        val responder = responder(FakeChatClient(listOf(ok("답", promptTokens = 1200, cachedTokens = 128))))
+
+        responder.respond("안녕")
+
+        assertEquals(128, responder.lastUsages.single().cachedTokens)
+    }
+
     private fun responder(client: ChatClient, current: ModelSettings = settings) = ModelResponder(client, tools, { current }, SYSTEM)
 
     private class FakeChatClient(private val results: List<Result<ChatResponse>>) : ChatClient {
@@ -163,10 +172,10 @@ class ModelResponderTest {
             "tool_calls", promptTokens, 19,
         )
 
-        fun ok(content: String?, finishReason: String = "stop", promptTokens: Int = 10, completionTokens: Int = 5) =
-            response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), finishReason, promptTokens, completionTokens)
+        fun ok(content: String?, finishReason: String = "stop", promptTokens: Int = 10, completionTokens: Int = 5, cachedTokens: Int = 0) =
+            response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), finishReason, promptTokens, completionTokens, cachedTokens)
 
-        fun response(message: ChatResponse.MessageResponse, finishReason: String, promptTokens: Int, completionTokens: Int) =
+        fun response(message: ChatResponse.MessageResponse, finishReason: String, promptTokens: Int, completionTokens: Int, cachedTokens: Int = 0) =
             Result.success(
                 ChatResponse(
                     id = "chatcmpl-test",
@@ -176,7 +185,7 @@ class ModelResponderTest {
                     choices = listOf(ChatResponse.Choice(0, message, null, finishReason)),
                     usage = ChatResponse.Usage(
                         promptTokens, completionTokens, promptTokens + completionTokens,
-                        ChatResponse.PromptTokensDetails(0, 0),
+                        ChatResponse.PromptTokensDetails(cachedTokens, 0),
                         ChatResponse.CompletionTokensDetails(0, 0, 0, 0),
                     ),
                     serviceTier = "default",

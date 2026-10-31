@@ -193,5 +193,5 @@ suspend fun runChatTurn(
 
 private fun usageLine(usage: CallUsage): String {
     val cost = usage.costUsd?.let { "약 %.4f원".format(it * ModelPricing.KRW_PER_USD) } ?: "가격 미등록"
-    return "[토큰] 입력 ${usage.inputTokens} · 출력 ${usage.outputTokens} · $cost"
+    return "[토큰] 입력 ${usage.inputTokens} (캐시 ${usage.cachedTokens}) · 출력 ${usage.outputTokens} · $cost"
 }

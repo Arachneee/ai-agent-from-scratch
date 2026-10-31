@@ -9,7 +9,7 @@ import aiagent.framework.model.ChatClient
 import aiagent.framework.model.ModelPricing
 import aiagent.shop.scenario.Responder
 
-data class CallUsage(val inputTokens: Int, val outputTokens: Int, val costUsd: Double?)
+data class CallUsage(val inputTokens: Int, val cachedTokens: Int, val outputTokens: Int, val costUsd: Double?)
 
 /**
  * 프레임워크의 [Agent]를 쇼핑몰의 [Responder]로 쓰게 한다. 대화 기록과 툴 호출 루프는 [Agent]가 맡는다.
@@ -43,7 +43,8 @@ class ModelResponder(
         }
         // 응답의 model은 날짜가 붙은 스냅숏 이름이라 가격표에 없으므로, 요청에 쓴 이름으로 비용을 찾는다.
         lastUsages = result.usages.map {
-            CallUsage(it.promptTokens, it.completionTokens, ModelPricing.costUsd(model, it.promptTokens, it.completionTokens))
+            val cached = it.promptTokensDetails.cachedTokens
+            CallUsage(it.promptTokens, cached, it.completionTokens, ModelPricing.costUsd(model, it.promptTokens, cached, it.completionTokens))
         }
         lastToolCalls = result.toolCalls
         return result.answer
