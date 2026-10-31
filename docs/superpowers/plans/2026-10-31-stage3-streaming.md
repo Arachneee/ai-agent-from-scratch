@@ -110,7 +110,12 @@
 - [ ] **Step 8: 검토하고 설명한다.** 원문 한 개가 조립 결과가 되기까지의 흐름을 설명한다. 학습자가 고르지 않은 동작이 숨어 있으면 짚는다. 스트림이 끝 표시 없이 끊기면 어떻게 되는지가 그 예다. 이 동작은 고치지 않고 다음 단계로 넘길 문제 후보로 적는다.
 - [ ] **Step 9: 커밋한다.** 메시지는 `서버 전송 이벤트 스트림을 읽고 응답으로 조립한다`.
 
-**확정된 모양:** (Task 3에서 채운다)
+**확정된 모양:** 학습자가 다음과 같이 정했다.
+
+- 스트림 읽기: `OpenAiClient.chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse`. `preparePost(...).execute { }` 안에서 `readUTF8Line()`으로 줄을 읽는다. 빈 줄은 건너뛰고, `data: ` 접두어를 떼고, `[DONE]`에서 멈춘다. 요청에는 `stream = true`와 `StreamOptions(includeUsage = true)`를 `copy`로 채운다. 실패 상태 코드는 `chat()`과 같이 `ChatApiException`을 던진다. `chatStream`은 아직 `ChatClient` 인터페이스에 없다.
+- 조각 읽기: 새 클래스 `ChatChunk(id, created, model, choices: List<Choice>, usage: ChatResponse.Usage?, serviceTier, systemFingerprint)`. `Choice(index, delta: Delta, finishReason: String?)`, `Delta(role?, content?, toolCalls: List<ToolCallDelta>?)`, `ToolCallDelta(index, id?, type?, function: FunctionDelta(name?, arguments))`. 조각에 따라 빠지는 필드만 `= null` 기본값을 둔다. `ChatResponse`는 바꾸지 않는다.
+- 조립: 별도 클래스 `ChatStreamAssembler`의 `add(chunk)`와 `result(): ChatResponse`. 글자는 이어 붙이고, 툴 호출은 `index`별로 묶어 `index` 순서로 담는다. `object`는 `chat.completion`, `annotations`는 빈 목록으로 채운다. 사용량, `finish_reason`, `role`, 툴 호출의 `id`, `type`, 이름을 받지 못했으면 `IllegalStateException`을 던진다. 글자 조각이 없으면 `content`는 null이다.
+- 비스트리밍 경로 `chat()`은 그대로 남긴다.
 
 ### Task 4: 진행 알림 통로와 루프의 스트리밍 전환
 
