@@ -8,6 +8,7 @@ object FaultPresets {
         "rate-limited" to allServices(ServiceFaults(rateLimitEvery = 3)),
         "stale" to allServices(ServiceFaults(staleReadRate = 0.5)),
         "down" to allServices(ServiceFaults(errorRate = 1.0)),
+        "slow-shipping" to FaultConfig(mapOf(ServiceName.SHIPPING to ServiceFaults(latencyMs = 2000L..2000L))),
     )
 
     fun get(name: String): FaultConfig =

@@ -3,6 +3,8 @@ package aiagent.shop.cli
 import aiagent.shop.ShopWorld
 import aiagent.shop.fault.FaultPresets
 import aiagent.shop.fault.ServiceException
+import aiagent.shop.fault.ServiceFaults
+import aiagent.shop.fault.ServiceName
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -71,5 +73,12 @@ class ArgsTest {
         val world = ShopWorld.create(42, FaultPresets.get("down"))
 
         repeat(5) { assertFailsWith<ServiceException.Unavailable> { world.shipping.getShipment("ORD-0001") } }
+    }
+
+    @Test
+    fun slowShippingDelaysOnlyShipping() {
+        val services = FaultPresets.get("slow-shipping").services
+
+        assertEquals(mapOf(ServiceName.SHIPPING to ServiceFaults(latencyMs = 2000L..2000L)), services)
     }
 }

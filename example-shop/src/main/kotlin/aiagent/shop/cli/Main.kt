@@ -19,6 +19,8 @@ import io.ktor.client.engine.cio.CIO
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import kotlin.system.exitProcess
+import kotlin.time.Duration
+import kotlin.time.TimeSource
 
 data class CliArgs(val command: String, val seed: Long, val faults: String, val responder: String = "rule")
 
@@ -26,7 +28,7 @@ private val COMMANDS = setOf("chat", "scenarios")
 private val RESPONDERS = setOf("rule", "model")
 
 private const val USAGE =
-    "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale|down>] [--responder <rule|model>], " +
+    "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale|down|slow-shipping>] [--responder <rule|model>], " +
         "scenarios [--seed <정수>], 또는 burst [--count <1~100>] [--concurrency <1~100>] [--model <이름>]"
 
 fun parseArgs(args: Array<String>): CliArgs {
@@ -127,22 +129,40 @@ private suspend fun chatLoop(responder: Responder, onCommand: ((String) -> Unit)
     }
 }
 
-/** 한 턴을 처리하고 출력한다. 예외가 나도 채팅이 끝나지 않도록 오류 문장으로 보여 준다. */
-suspend fun runChatTurn(responder: Responder, line: String, out: (String) -> Unit) {
+/**
+ * 한 턴을 처리하고 출력한다. 예외가 나도 채팅이 끝나지 않도록 오류 문장으로 보여 준다.
+ * 모델 응답기이면 마지막에 이 턴에서 처음 무언가를 출력하기까지의 시간과 답을 출력하기까지의 시간을 보여 준다.
+ */
+suspend fun runChatTurn(
+    responder: Responder,
+    line: String,
+    out: (String) -> Unit,
+    timeSource: TimeSource = TimeSource.Monotonic,
+) {
+    val start = timeSource.markNow()
+    var firstOutput: Duration? = null
+    val timedOut = { text: String ->
+        if (firstOutput == null) firstOutput = start.elapsedNow()
+        out(text)
+    }
     try {
-        val reply = if (responder is ModelResponder) responder.respond(line, out) else responder.respond(line)
+        val reply = if (responder is ModelResponder) responder.respond(line, timedOut) else responder.respond(line)
         if (responder is ModelResponder) {
-            responder.lastToolCalls.forEach { out("[툴] ${it.name} ${it.arguments} 결과: ${it.result}") }
+            responder.lastToolCalls.forEach { timedOut("[툴] ${it.name} ${it.arguments} 결과: ${it.result}") }
         }
-        out(reply)
+        timedOut(reply)
     } catch (e: CancellationException) {
         throw e
     } catch (e: ServiceException) {
-        out("[서비스 오류] ${e.message}")
+        timedOut("[서비스 오류] ${e.message}")
     } catch (e: Exception) {
-        out("[오류] ${e::class.simpleName}: ${e.message}")
+        timedOut("[오류] ${e::class.simpleName}: ${e.message}")
     }
-    if (responder is ModelResponder) responder.lastUsages.forEach { out(usageLine(it)) }
+    val total = start.elapsedNow()
+    if (responder is ModelResponder) {
+        responder.lastUsages.forEach { out(usageLine(it)) }
+        out("[시간] 첫 출력 %.1f초 · 전체 %.1f초".format(firstOutput!!.inWholeMilliseconds / 1000.0, total.inWholeMilliseconds / 1000.0))
+    }
 }
 
 private fun usageLine(usage: CallUsage): String {
