@@ -7,6 +7,8 @@ import aiagent.framework.model.ChatRequest
 import aiagent.framework.model.ChatResponse
 import aiagent.framework.tool.Description
 import aiagent.framework.tool.ToolCatalog
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -117,7 +119,7 @@ class AgentTest {
     }
 
     @Test
-    fun toolProgressIsReportedBeforeEachExecution() = runTest {
+    fun everyStartedEventComesBeforeExecution() = runTest {
         val events = mutableListOf<String>()
         val catalog = ToolCatalog().apply {
             register<OrderIdArgs, String>("get_order", "주문 상태를 조회한다.") { events += "execute get_order"; "PREPARING" }
@@ -130,9 +132,51 @@ class AgentTest {
         }
 
         assertEquals(
-            listOf("started get_order $ARGS", "execute get_order", "started get_shipment $ARGS", "execute get_shipment"),
+            listOf("started get_order $ARGS", "started get_shipment $ARGS", "execute get_order", "execute get_shipment"),
             events,
         )
+    }
+
+    @Test
+    fun toolsInOneResponseRunConcurrently() = runTest {
+        val catalog = ToolCatalog().apply {
+            register<OrderIdArgs, String>("get_order", "주문 상태를 조회한다.") { delay(2000); "PREPARING" }
+            register<OrderIdArgs, String>("get_shipment", "배송 상태를 조회한다.") { delay(2000); "READY" }
+        }
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_order"), call("call_2", "get_shipment"), call("call_3", "get_shipment")), answer("답")))
+        val start = currentTime
+
+        Agent(client, catalog, { settings }, SYSTEM).run("어디쯤 왔어요?")
+
+        assertEquals(2000, currentTime - start)
+    }
+
+    @Test
+    fun resultsKeepResponseOrderWhenToolsFinishOutOfOrder() = runTest {
+        val catalog = ToolCatalog().apply {
+            register<OrderIdArgs, String>("get_order", "주문 상태를 조회한다.") { delay(2000); "PREPARING" }
+            register<OrderIdArgs, String>("get_shipment", "배송 상태를 조회한다.") { delay(500); "READY" }
+        }
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_order"), call("call_2", "get_shipment")), answer("답")))
+
+        val result = Agent(client, catalog, { settings }, SYSTEM).run("어디쯤 왔어요?")
+
+        val tools = client.requests[1].messages.filter { it.role == "tool" }
+        assertEquals(listOf("call_1" to "\"PREPARING\"", "call_2" to "\"READY\""), tools.map { it.toolCallId to it.content })
+        assertEquals(listOf("get_order", "get_shipment"), result.toolCalls.map { it.name })
+    }
+
+    @Test
+    fun throwingEventHandlerLeavesNoUnansweredToolCalls() = runTest {
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_order")), answer("답")))
+        val agent = agent(client)
+
+        assertFailsWith<IllegalStateException> {
+            agent.run("어디쯤 왔어요?") { if (it is AgentEvent.ToolCallStarted) throw IllegalStateException("화면 오류") }
+        }
+        agent.run("다시 알려 주세요.")
+
+        assertEquals(listOf("system", "user", "user"), client.requests[1].messages.map { it.role })
     }
 
     @Test

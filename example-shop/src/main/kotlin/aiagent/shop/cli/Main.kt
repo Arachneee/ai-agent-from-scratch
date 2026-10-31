@@ -96,17 +96,21 @@ fun main(args: Array<String>) = runBlocking {
         }
         "chat" -> {
             val world = ShopWorld.create(cli.seed, faults)
-            if (apiKey == null) chatLoop(RuleBasedResponder(world)) else modelChat(apiKey, world)
+            val console = ConsoleOutput {
+                print(it)
+                System.out.flush()
+            }
+            if (apiKey == null) chatLoop(console, RuleBasedResponder(world)) else modelChat(console, apiKey, world)
         }
     }
 }
 
-private suspend fun modelChat(apiKey: String, world: ShopWorld) {
+private suspend fun modelChat(console: ConsoleOutput, apiKey: String, world: ShopWorld) {
     var settings = ModelSettings(ModelPricing.DEFAULT_MODEL, temperature = null, maxTokens = null, showRaw = false)
-    val http = HttpClient(CIO) { rawExchangeLog(enabled = { settings.showRaw }, sink = ::println) }
+    val http = HttpClient(CIO) { rawExchangeLog(enabled = { settings.showRaw }, sink = console::line) }
     val responder = ModelResponder(OpenAiClient(http, apiKey), ShopTools(world), { settings })
     println(CHAT_COMMAND_USAGE)
-    chatLoop(responder) { line ->
+    chatLoop(console, responder) { line ->
         val result = applyChatCommand(line, settings)
         settings = result.settings
         if (result.reset) responder.reset()
@@ -115,7 +119,7 @@ private suspend fun modelChat(apiKey: String, world: ShopWorld) {
     http.close()
 }
 
-private suspend fun chatLoop(responder: Responder, onCommand: ((String) -> Unit)? = null) {
+private suspend fun chatLoop(console: ConsoleOutput, responder: Responder, onCommand: ((String) -> Unit)? = null) {
     while (true) {
         print("> ")
         System.out.flush()
@@ -126,10 +130,7 @@ private suspend fun chatLoop(responder: Responder, onCommand: ((String) -> Unit)
             onCommand(line)
             continue
         }
-        runChatTurn(responder, line, ::println, {
-            print(it)
-            System.out.flush()
-        })
+        runChatTurn(responder, line, console::line, console::fragment)
     }
 }
 

@@ -5,6 +5,9 @@ import aiagent.framework.model.ChatRequest
 import aiagent.framework.model.ChatResponse
 import aiagent.framework.tool.ToolCatalog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /**
  * 한 턴마다 읽는 모델 호출 설정이다. [toolNames]가 비어 있으면 요청에 툴 정의를 싣지 않는다.
@@ -32,6 +35,8 @@ data class TurnResult(
  * 응답에 툴 호출이 있으면 실행하고 결과를 돌려보내기를 툴 호출이 없는 응답이 올 때까지 반복한다.
  * 기록에는 실패한 턴의 메시지도 남는다. 툴 실행이 예외로 끝나면 예외 문장을 툴 결과로 돌려보낸다.
  * 응답은 스트리밍으로 받고, 글자 조각은 도착하는 대로 [AgentEvent.TextDelta]로, 툴은 실행하기 직전에 [AgentEvent.ToolCallStarted]로 `onEvent`에 알린다.
+ * 한 응답에 담긴 툴 호출은 동시에 실행하고, 결과는 끝난 순서가 아니라 응답에 나온 순서대로 돌려보낸다.
+ * 툴 호출 메시지와 결과 메시지는 결과가 모두 모인 뒤에 함께 기록하므로, 도중에 예외가 나도 짝 없는 툴 호출이 기록에 남지 않는다.
  * 한 턴 안에서 상한만큼 실행한 툴은 다음 요청의 툴 목록에서 빼고, 그 뒤의 호출은 실행하지 않고 오류 문장을 돌려보낸다.
  * 모든 툴이 빠지면 툴 정의 없이 요청하므로 모델은 글로 답해야 한다.
  */
@@ -71,16 +76,16 @@ class Agent(
                 history += ChatRequest.MessageRequest("assistant", content)
                 return TurnResult(content.ifEmpty { "[빈 응답] finish_reason=${choice.finishReason}" }, usages, executed)
             }
-            history += ChatRequest.MessageRequest("assistant", choice.message.content, toolCalls = toolCalls)
-            for (call in toolCalls) {
+            val allowed = toolCalls.map { call ->
                 val name = call.function.name
-                val result = if (canCall(name)) {
-                    callCounts[name] = callCounts.getOrDefault(name, 0) + 1
-                    onEvent(AgentEvent.ToolCallStarted(name, call.function.arguments))
-                    execute(call)
-                } else {
-                    "[툴 오류] ${name}는 이번 턴에 더 쓸 수 없습니다"
-                }
+                canCall(name).also { if (it) callCounts[name] = callCounts.getOrDefault(name, 0) + 1 }
+            }
+            val running = toolCalls.filterIndexed { i, _ -> allowed[i] }
+            running.forEach { onEvent(AgentEvent.ToolCallStarted(it.function.name, it.function.arguments)) }
+            val results = coroutineScope { running.map { async { execute(it) } }.awaitAll() }.iterator()
+            history += ChatRequest.MessageRequest("assistant", choice.message.content, toolCalls = toolCalls)
+            toolCalls.forEachIndexed { i, call ->
+                val result = if (allowed[i]) results.next() else "[툴 오류] ${call.function.name}는 이번 턴에 더 쓸 수 없습니다"
                 executed += ExecutedToolCall(call.function.name, call.function.arguments, result)
                 history += ChatRequest.MessageRequest("tool", result, toolCallId = call.id)
             }
