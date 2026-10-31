@@ -1,6 +1,8 @@
 package aiagent.shop.agent
 
+import aiagent.framework.agent.AgentEvent
 import aiagent.framework.model.ChatApiException
+import aiagent.framework.model.ChatChunk
 import aiagent.framework.model.ChatClient
 import aiagent.framework.model.ChatRequest
 import aiagent.framework.model.ChatResponse
@@ -39,13 +41,20 @@ class ModelResponderTest {
     }
 
     @Test
-    fun progressIsPassedToCaller() = runTest {
+    fun eventsArePassedToCaller() = runTest {
         val client = FakeChatClient(listOf(toolCall("get_shipment", content = "다시 한 번 시도해 보겠습니다."), ok("출고 대기입니다.")))
-        val progress = mutableListOf<String>()
+        val events = mutableListOf<AgentEvent>()
 
-        responder(client).respond("주문번호 ORD-0001 지금 어디쯤 왔어요?", progress::add)
+        responder(client).respond("주문번호 ORD-0001 지금 어디쯤 왔어요?", events::add)
 
-        assertEquals(listOf("다시 한 번 시도해 보겠습니다."), progress)
+        assertEquals(
+            listOf(
+                AgentEvent.TextDelta("다시 한 번 시도해 보겠습니다."),
+                AgentEvent.ToolCallStarted("get_shipment", """{"order_id":"ORD-0001"}"""),
+                AgentEvent.TextDelta("출고 대기입니다."),
+            ),
+            events,
+        )
     }
 
     @Test
@@ -130,6 +139,14 @@ class ModelResponderTest {
         override suspend fun chat(request: ChatRequest): Result<ChatResponse> {
             requests += request
             return results[requests.size - 1]
+        }
+
+        override suspend fun chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse {
+            val response = chat(request).getOrThrow()
+            response.choices.single().message.content?.let { text ->
+                onChunk(ChatChunk(response.id, 0, response.model, listOf(ChatChunk.Choice(0, ChatChunk.Delta(content = text), null)), null, "default", "fp_test"))
+            }
+            return response
         }
     }
 

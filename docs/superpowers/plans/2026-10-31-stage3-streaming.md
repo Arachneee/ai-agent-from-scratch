@@ -142,7 +142,13 @@
 - [ ] **Step 6: 검토하고 설명한다.** 질문 하나가 진행 알림과 최종 답이 되기까지의 흐름을 설명하고, 숨은 동작을 짚는다. 진행 알림을 받는 쪽이 예외를 던지면 대화 기록이 어떻게 되는지가 그 예다.
 - [ ] **Step 7: 커밋한다.** 메시지는 `루프가 스트리밍으로 진행 상황을 알린다`.
 
-**확정된 모양:** (Task 4에서 채운다)
+**확정된 모양:** 학습자가 다음과 같이 정했다.
+
+- 진행 알림: 하나의 콜백에 이벤트 타입으로 넘긴다. `sealed interface AgentEvent`에 `TextDelta(text: String)`와 `ToolCallStarted(name: String, arguments: String)`가 있다. `Agent.run(message: String, onEvent: (AgentEvent) -> Unit = {}): TurnResult`.
+- 빈 글자 조각은 알리지 않는다. 툴 호출 응답에 함께 온 문장은 `TextDelta`로 이미 나가므로 조립 뒤에 다시 알리지 않는다.
+- `ToolCallStarted`는 상한 안에서 실제로 실행하는 툴에만, `execute` 직전에 보낸다. 상한에 걸린 호출에는 보내지 않는다.
+- `ChatClient`에 `suspend fun chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse`를 더한다. `chat()`은 `Result`, `chatStream`은 예외를 던지는 차이를 그대로 둔다. `Agent`는 `chatStream`만 쓴다.
+- `ModelResponder.respond(message, onEvent: (AgentEvent) -> Unit)`는 이벤트를 그대로 넘긴다.
 
 ### Task 5: 채팅 화면 연결
 

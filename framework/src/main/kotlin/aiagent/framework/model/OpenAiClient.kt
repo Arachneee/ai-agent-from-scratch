@@ -46,7 +46,7 @@ class OpenAiClient(
      * 빈 줄은 건너뛰고 `data: [DONE]`에서 읽기를 멈춘다. 사용량을 받도록 `include_usage`를 켠다.
      * 스트림이 끝나면 받은 조각을 [ChatStreamAssembler]로 조립한 응답을 돌려준다.
      */
-    suspend fun chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse {
+    override suspend fun chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse {
         return httpClient.preparePost("$baseUrl/v1/chat/completions") {
             bearerAuth(apiKey)
             contentType(ContentType.Application.Json)

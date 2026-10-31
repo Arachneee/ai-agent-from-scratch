@@ -1,5 +1,6 @@
 package aiagent.shop.cli
 
+import aiagent.framework.agent.AgentEvent
 import aiagent.framework.model.ModelPricing
 import aiagent.framework.model.OpenAiClient
 import aiagent.framework.model.rawExchangeLog
@@ -146,7 +147,7 @@ suspend fun runChatTurn(
         out(text)
     }
     try {
-        val reply = if (responder is ModelResponder) responder.respond(line, timedOut) else responder.respond(line)
+        val reply = if (responder is ModelResponder) responder.respond(line) { if (it is AgentEvent.TextDelta) timedOut(it.text) } else responder.respond(line)
         if (responder is ModelResponder) {
             responder.lastToolCalls.forEach { timedOut("[툴] ${it.name} ${it.arguments} 결과: ${it.result}") }
         }

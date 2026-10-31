@@ -1,6 +1,7 @@
 package aiagent.shop.agent
 
 import aiagent.framework.agent.Agent
+import aiagent.framework.agent.AgentEvent
 import aiagent.framework.agent.AgentSettings
 import aiagent.framework.agent.ExecutedToolCall
 import aiagent.framework.model.ChatApiException
@@ -13,7 +14,7 @@ data class CallUsage(val inputTokens: Int, val outputTokens: Int, val costUsd: D
 /**
  * 프레임워크의 [Agent]를 쇼핑몰의 [Responder]로 쓰게 한다. 대화 기록과 툴 호출 루프는 [Agent]가 맡는다.
  * 모델 API 오류는 답 대신 `[모델 오류]` 문장으로 보여 준다.
- * 툴 호출 중에 모델이 쓴 문장은 `onProgress`로 턴이 끝나기 전에 넘긴다.
+ * 글자 조각과 툴 실행 직전 알림은 [AgentEvent]로 `onEvent`에 턴이 끝나기 전에 넘긴다.
  */
 class ModelResponder(
     client: ChatClient,
@@ -31,12 +32,12 @@ class ModelResponder(
 
     override suspend fun respond(message: String): String = respond(message) {}
 
-    suspend fun respond(message: String, onProgress: (String) -> Unit): String {
+    suspend fun respond(message: String, onEvent: (AgentEvent) -> Unit): String {
         lastUsages = emptyList()
         lastToolCalls = emptyList()
         val model = settings().model
         val result = try {
-            agent.run(message, onProgress)
+            agent.run(message, onEvent)
         } catch (e: ChatApiException) {
             return "[모델 오류] ${e.status} ${e.error?.error?.message ?: "오류 본문을 해석하지 못했습니다"}"
         }

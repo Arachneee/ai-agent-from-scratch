@@ -1,5 +1,6 @@
 package aiagent.shop.cli
 
+import aiagent.framework.model.ChatChunk
 import aiagent.framework.model.ChatClient
 import aiagent.framework.model.ChatRequest
 import aiagent.framework.model.ChatResponse
@@ -60,6 +61,14 @@ class ChatTurnTest {
             val (elapsed, response) = steps[calls++]
             time += elapsed
             return Result.success(response)
+        }
+
+        override suspend fun chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse {
+            val response = chat(request).getOrThrow()
+            response.choices.single().message.content?.let { text ->
+                onChunk(ChatChunk(response.id, 0, response.model, listOf(ChatChunk.Choice(0, ChatChunk.Delta(content = text), null)), null, "default", "fp_test"))
+            }
+            return response
         }
     }
 

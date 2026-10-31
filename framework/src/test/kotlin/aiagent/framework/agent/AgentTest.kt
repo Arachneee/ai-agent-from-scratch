@@ -1,6 +1,7 @@
 package aiagent.framework.agent
 
 import aiagent.framework.model.ChatApiException
+import aiagent.framework.model.ChatChunk
 import aiagent.framework.model.ChatClient
 import aiagent.framework.model.ChatRequest
 import aiagent.framework.model.ChatResponse
@@ -116,23 +117,63 @@ class AgentTest {
     }
 
     @Test
-    fun progressShowsContentOfToolCallResponseBeforeNextRequest() = runTest {
+    fun toolProgressIsReportedBeforeEachExecution() = runTest {
         val events = mutableListOf<String>()
-        val client = object : ChatClient {
-            val results = listOf(
-                toolCalls(call("call_1", "get_shipment"), content = "다시 한 번 시도해 보겠습니다."),
-                toolCalls(call("call_2", "get_shipment")),
-                answer("출고 대기입니다."),
-            )
-            override suspend fun chat(request: ChatRequest): Result<ChatResponse> {
-                events += "request"
-                return results[events.count { it == "request" } - 1]
-            }
+        val catalog = ToolCatalog().apply {
+            register<OrderIdArgs, String>("get_order", "주문 상태를 조회한다.") { events += "execute get_order"; "PREPARING" }
+            register<OrderIdArgs, String>("get_shipment", "배송 상태를 조회한다.") { events += "execute get_shipment"; "READY" }
+        }
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_order"), call("call_2", "get_shipment")), answer("답")))
+
+        Agent(client, catalog, { settings }, SYSTEM).run("어디쯤 왔어요?") {
+            if (it is AgentEvent.ToolCallStarted) events += "started ${it.name} ${it.arguments}"
         }
 
-        agent(client).run("어디쯤 왔어요?") { events += "progress: $it" }
+        assertEquals(
+            listOf("started get_order $ARGS", "execute get_order", "started get_shipment $ARGS", "execute get_shipment"),
+            events,
+        )
+    }
 
-        assertEquals(listOf("request", "progress: 다시 한 번 시도해 보겠습니다.", "request", "request"), events)
+    @Test
+    fun textBeforeToolCallsIsStreamedAndKeptInHistory() = runTest {
+        val events = mutableListOf<String>()
+        val catalog = ToolCatalog().apply {
+            register<OrderIdArgs, String>("get_shipment", "배송 상태를 조회한다.") { events += "execute"; "READY" }
+        }
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_shipment"), content = "다시 한 번 시도해 보겠습니다."), answer("출고 대기입니다.")))
+
+        Agent(client, catalog, { settings.copy(toolNames = listOf("get_shipment")) }, SYSTEM).run("어디쯤 왔어요?") {
+            if (it is AgentEvent.TextDelta) events += "text ${it.text}"
+        }
+
+        assertEquals(listOf("text 다시 한 번 시도해 보겠습니다.", "execute", "text 출고 대기입니다."), events)
+        val assistant = client.requests[1].messages[2]
+        assertEquals("다시 한 번 시도해 보겠습니다.", assistant.content)
+        assertEquals("call_1", assistant.toolCalls!!.single().id)
+    }
+
+    @Test
+    fun textDeltasAreReportedInArrivalOrderWithoutEmptyPieces() = runTest {
+        val texts = mutableListOf<String>()
+        val client = FakeChatClient(listOf(answer("배송 준비 중입니다.")), pieces = { listOf("", "배송 ", "준비 중입니다.") })
+
+        val result = agent(client).run("어디쯤 왔어요?") { if (it is AgentEvent.TextDelta) texts += it.text }
+
+        assertEquals(listOf("배송 ", "준비 중입니다."), texts)
+        assertEquals("배송 준비 중입니다.", result.answer)
+    }
+
+    @Test
+    fun blockedCallIsNotReportedAsStarted() = runTest {
+        val started = mutableListOf<String>()
+        val client = FakeChatClient(listOf(toolCalls(call("call_1", "get_order"), call("call_2", "get_order")), answer("답")))
+
+        agent(client, settings.copy(maxCallsPerTool = 1)).run("어디쯤 왔어요?") {
+            if (it is AgentEvent.ToolCallStarted) started += it.name
+        }
+
+        assertEquals(listOf("get_order"), started)
     }
 
     @Test
@@ -223,12 +264,27 @@ class AgentTest {
 
     private fun agent(client: ChatClient, current: AgentSettings = settings) = Agent(client, catalog, { current }, SYSTEM)
 
-    private class FakeChatClient(private val results: List<Result<ChatResponse>>) : ChatClient {
+    /**
+     * 정해 둔 응답을 차례로 돌려준다. [chatStream]은 응답의 글자를 [pieces]로 나눈 조각을 먼저 넘긴 뒤 응답을 돌려준다.
+     * 기본으로는 글자 전체를 조각 하나로 넘긴다.
+     */
+    private class FakeChatClient(
+        private val results: List<Result<ChatResponse>>,
+        private val pieces: (String) -> List<String> = { listOf(it) },
+    ) : ChatClient {
         val requests = mutableListOf<ChatRequest>()
 
         override suspend fun chat(request: ChatRequest): Result<ChatResponse> {
             requests += request
             return results[requests.size - 1]
+        }
+
+        override suspend fun chatStream(request: ChatRequest, onChunk: (ChatChunk) -> Unit): ChatResponse {
+            val response = chat(request).getOrThrow()
+            response.choices.single().message.content?.let(pieces)?.forEach { text ->
+                onChunk(ChatChunk(response.id, 0, response.model, listOf(ChatChunk.Choice(0, ChatChunk.Delta(content = text), null)), null, "default", "fp_test"))
+            }
+            return response
         }
     }
 
