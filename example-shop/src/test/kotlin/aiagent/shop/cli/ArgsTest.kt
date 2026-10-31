@@ -81,4 +81,10 @@ class ArgsTest {
 
         assertEquals(mapOf(ServiceName.SHIPPING to ServiceFaults(latencyMs = 2000L..2000L)), services)
     }
+
+    @Test
+    fun longChatParsesSeed() {
+        assertEquals(7L, parseLongChatArgs(arrayOf("long-chat", "--seed", "7")))
+        assertEquals(42L, parseLongChatArgs(arrayOf("long-chat")))
+    }
 }

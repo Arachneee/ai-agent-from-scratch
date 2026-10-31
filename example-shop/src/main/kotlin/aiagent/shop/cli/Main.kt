@@ -30,7 +30,7 @@ private val RESPONDERS = setOf("rule", "model")
 
 private const val USAGE =
     "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale|down|slow-shipping>] [--responder <rule|model>], " +
-        "scenarios [--seed <정수>], 또는 burst [--count <1~100>] [--concurrency <1~100>] [--model <이름>]"
+        "scenarios [--seed <정수>], burst [--count <1~100>] [--concurrency <1~100>] [--model <이름>], 또는 long-chat [--seed <정수>]"
 
 fun parseArgs(args: Array<String>): CliArgs {
     val command = args.firstOrNull()
@@ -77,6 +77,18 @@ fun main(args: Array<String>) = runBlocking {
             exitProcess(2)
         }
         runBurst(burstArgs, apiKey)
+        return@runBlocking
+    }
+
+    if (args.firstOrNull() == "long-chat") {
+        val (seed, apiKey) = try {
+            parseLongChatArgs(args) to requireApiKey(System::getenv)
+        } catch (e: IllegalArgumentException) {
+            System.err.println(e.message)
+            System.err.println(USAGE)
+            exitProcess(2)
+        }
+        runLongChatCommand(seed, apiKey)
         return@runBlocking
     }
 
