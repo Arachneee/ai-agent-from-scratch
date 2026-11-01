@@ -14,6 +14,8 @@ data class ChatRequest(
     val stream: Boolean? = null,
     @SerialName("stream_options")
     val streamOptions: StreamOptions? = null,
+    @SerialName("tool_choice")
+    val toolChoice: String? = null,
 ) {
     @Serializable
     data class StreamOptions(

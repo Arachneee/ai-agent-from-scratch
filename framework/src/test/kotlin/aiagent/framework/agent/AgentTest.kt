@@ -386,8 +386,8 @@ class AgentTest {
     @Test
     fun summaryReplacesTrimmedMessages() = runTest {
         val seen = mutableListOf<Pair<String?, List<String>>>()
-        val summarizer = HistorySummarizer { previous, dropped ->
-            seen += previous to dropped.map { "${it.role}:${it.content}" }
+        val summarizer = HistorySummarizer { context ->
+            seen += context.previous to context.dropped.map { "${it.role}:${it.content}" }
             Summary("요약${seen.size}", usage(77))
         }
         val client = FakeChatClient(List(3) { answer("답${it + 1}", promptTokens = 500) } + answer("답4"))
@@ -405,7 +405,7 @@ class AgentTest {
 
     @Test
     fun resetClearsSummaryAndTokenCount() = runTest {
-        val summarizer = HistorySummarizer { _, _ -> Summary("요약", null) }
+        val summarizer = HistorySummarizer { Summary("요약", null) }
         val client = FakeChatClient(List(3) { answer("답", promptTokens = 500) } + answer("새 답"))
         val agent = Agent(client, catalog, { trimming }, SYSTEM, summarizer)
 
@@ -416,6 +416,38 @@ class AgentTest {
         agent.run("새 질문")
 
         assertEquals(listOf("system", "user"), client.requests[3].messages.map { it.role })
+    }
+
+    @Test
+    fun conversationGivenToSummarizerStartsWithPreviousRequest() = runTest {
+        val contexts = mutableListOf<SummaryContext>()
+        val summarizer = HistorySummarizer { contexts += it; Summary("요약", null) }
+        val client = FakeChatClient(List(2) { answer("답${it + 1}", promptTokens = 500) } + answer("답3"))
+        val agent = Agent(client, catalog, { trimming }, SYSTEM, summarizer)
+
+        agent.run("첫")
+        agent.run("둘")
+        agent.run("셋")
+
+        val conversation = contexts.single().conversation
+        val previous = client.requests[1]
+        assertEquals(previous.messages + ChatRequest.MessageRequest("assistant", "답2"), conversation.messages)
+        assertEquals(previous.tools, conversation.tools)
+        assertEquals(previous.model, conversation.model)
+    }
+
+    @Test
+    fun summarizedEventIsReported() = runTest {
+        val summarizer = HistorySummarizer { Summary("요약", usage(77)) }
+        val client = FakeChatClient(List(2) { answer("답", promptTokens = 500) } + answer("답3"))
+        val agent = Agent(client, catalog, { trimming }, SYSTEM, summarizer)
+        val events = mutableListOf<AgentEvent>()
+
+        agent.run("첫")
+        agent.run("둘")
+        agent.run("셋") { if (it is AgentEvent.HistorySummarized) events += it }
+
+        assertEquals(listOf<AgentEvent>(AgentEvent.HistorySummarized("요약", usage(77))), events)
     }
 
     private fun agent(client: ChatClient, current: AgentSettings = settings) = Agent(client, catalog, { current }, SYSTEM)

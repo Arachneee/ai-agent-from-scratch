@@ -67,18 +67,14 @@ class Agent(
         val executed = mutableListOf<ExecutedToolCall>()
         history += ChatRequest.MessageRequest("user", message)
         if (current.historyTokenLimit != null && lastPromptTokens > current.historyTokenLimit) {
-            compact(current.keepRecentTurns)?.let { usages += it }
+            val conversation = request(current, allTools, history.dropLast(1))
+            compact(current.keepRecentTurns, conversation)?.let { result ->
+                result.usage?.let { usages += it }
+                onEvent(AgentEvent.HistorySummarized(result.text, result.usage))
+            }
         }
         while (true) {
-            val request = ChatRequest(
-                model = current.model,
-                messages = listOf(ChatRequest.MessageRequest("system", systemPrompt)) +
-                    listOfNotNull(summary?.let { ChatRequest.MessageRequest("system", "지금까지의 대화 요약: $it") }) +
-                    history,
-                temperature = current.temperature,
-                maxTokens = current.maxTokens,
-                tools = allTools?.filter { canCall(it.function.name) }?.takeIf { it.isNotEmpty() },
-            )
+            val request = request(current, allTools?.filter { canCall(it.function.name) }, history)
             val response = client.chatStream(request) { chunk ->
                 chunk.choices.firstOrNull()?.delta?.content?.takeIf { it.isNotEmpty() }?.let { onEvent(AgentEvent.TextDelta(it)) }
             }
@@ -113,16 +109,29 @@ class Agent(
         lastPromptTokens = 0
     }
 
-    /** 이번 턴의 사용자 메시지 앞에서 최근 [keep]개의 지난 턴만 남기고 잘라 낸 것을 요약한다. 요약에 쓴 사용량을 돌려준다. */
-    private suspend fun compact(keep: Int): ChatResponse.Usage? {
+    private fun request(current: AgentSettings, tools: List<ChatRequest.Tool>?, messages: List<ChatRequest.MessageRequest>) = ChatRequest(
+        model = current.model,
+        messages = listOf(ChatRequest.MessageRequest("system", systemPrompt)) +
+            listOfNotNull(summary?.let { ChatRequest.MessageRequest("system", "지금까지의 대화 요약: $it") }) +
+            messages,
+        temperature = current.temperature,
+        maxTokens = current.maxTokens,
+        tools = tools?.takeIf { it.isNotEmpty() },
+    )
+
+    /**
+     * 이번 턴의 사용자 메시지 앞에서 최근 [keep]개의 지난 턴만 남기고 잘라 낸 것을 요약한다.
+     * [conversation]은 자르기 전의 기록으로 만든 요청이다. 자를 턴이 없으면 null을 돌려준다.
+     */
+    private suspend fun compact(keep: Int, conversation: ChatRequest): Summary? {
         val pastTurnStarts = history.indices.filter { history[it].role == "user" }.dropLast(1)
         if (pastTurnStarts.size <= keep) return null
         val cut = if (keep == 0) history.lastIndex else pastTurnStarts[pastTurnStarts.size - keep]
         val dropped = history.subList(0, cut)
-        val result = summarizer.summarize(summary, dropped.toList())
+        val result = summarizer.summarize(SummaryContext(summary, dropped.toList(), conversation))
         summary = result.text
         dropped.clear()
-        return result.usage
+        return result
     }
 
     private suspend fun execute(call: ChatResponse.ToolCall): String = try {

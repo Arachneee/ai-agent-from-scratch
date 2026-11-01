@@ -1,5 +1,6 @@
 package aiagent.shop.scenario
 
+import aiagent.framework.agent.AgentEvent
 import aiagent.framework.model.ModelPricing
 import aiagent.shop.agent.ModelResponder
 import kotlinx.coroutines.CancellationException
@@ -75,7 +76,7 @@ object LongChat {
 
 /**
  * [messages]를 차례로 보내고 턴마다 입력 토큰과 캐시 토큰과 비용을 찍은 뒤 요약을 찍는다.
- * 턴의 입력 토큰은 그 턴에 보낸 요청들의 입력 토큰 합이다. 한 턴이 실패해도 멈추지 않고 그 턴을 오류로 표시한 뒤 다음 발화로 넘어간다.
+ * 턴의 입력 토큰은 그 턴에 보낸 요청들의 입력 토큰 합이고, 기록을 요약한 턴이면 요약 요청도 들어간다. 요약 요청과 요약문은 따로 한 줄씩 찍는다. 한 턴이 실패해도 멈추지 않고 그 턴을 오류로 표시한 뒤 다음 발화로 넘어간다.
  */
 suspend fun runLongChat(
     responder: ModelResponder,
@@ -87,7 +88,12 @@ suspend fun runLongChat(
     val replies = mutableListOf<String>()
     messages.forEachIndexed { index, message ->
         val reply = try {
-            responder.respond(message)
+            responder.respond(message) { event ->
+                if (event is AgentEvent.HistorySummarized) {
+                    event.usage?.let { out("[요약 요청] 입력 ${it.promptTokens} (캐시 ${it.promptTokensDetails.cachedTokens}) · 출력 ${it.completionTokens}") }
+                    out("[요약문] ${event.summary ?: "요약 없이 버림"}")
+                }
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

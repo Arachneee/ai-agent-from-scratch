@@ -3,6 +3,7 @@ package aiagent.shop.agent
 import aiagent.framework.agent.Agent
 import aiagent.framework.agent.AgentEvent
 import aiagent.framework.agent.AgentSettings
+import aiagent.framework.agent.CachedModelSummarizer
 import aiagent.framework.agent.DropSummarizer
 import aiagent.framework.agent.ExecutedToolCall
 import aiagent.framework.agent.HistorySummarizer
@@ -66,8 +67,12 @@ class ModelResponder(
         const val SYSTEM_PROMPT =
             "너는 가상 쇼핑몰의 고객지원 상담원이다. 고객의 주문 조회, 배송, 교환, 환불 문의에 한국어로 친절하고 간결하게 답한다."
 
+        private const val SUMMARY_FOCUS = " 고객이 말한 주문번호와 각 주문의 상태는 반드시 포함하라."
+
         /** 기록을 요약할 때 쓰는 지시문이다. 프레임워크의 기본 지시문에 주문번호와 상태를 반드시 남기라는 말을 더한다. */
-        const val SUMMARY_INSTRUCTION =
-            ModelSummarizer.DEFAULT_INSTRUCTION + " 고객이 말한 주문번호와 각 주문의 상태는 반드시 포함하라."
+        const val SUMMARY_INSTRUCTION = ModelSummarizer.DEFAULT_INSTRUCTION + SUMMARY_FOCUS
+
+        /** [CachedModelSummarizer]에 쓰는 지시문이다. */
+        const val CACHED_SUMMARY_INSTRUCTION = CachedModelSummarizer.DEFAULT_INSTRUCTION + SUMMARY_FOCUS
     }
 }

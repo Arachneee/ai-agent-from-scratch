@@ -21,11 +21,45 @@ class ModelSummarizerTest {
         ChatRequest.MessageRequest("assistant", "준비 중입니다."),
     )
 
+    private val tool = ChatRequest.Tool("function", ChatRequest.Function("lookup", "조회", ChatRequest.Parameters("object", emptyMap(), emptyList())))
+
+    private val conversation = ChatRequest(
+        model = "gpt-4o-mini",
+        messages = listOf(ChatRequest.MessageRequest("system", "시스템")) + dropped +
+            listOf(ChatRequest.MessageRequest("user", "최근 질문"), ChatRequest.MessageRequest("assistant", "최근 답")),
+        tools = listOf(tool),
+    )
+
+    @Test
+    fun cachedSummarizerAppendsInstructionToConversation() = runTest {
+        val client = RecordingClient("새 요약")
+
+        CachedModelSummarizer(client, "지시문").summarize(SummaryContext(null, dropped, conversation))
+
+        val request = client.requests.single()
+        assertEquals(conversation.messages, request.messages.dropLast(1))
+        assertEquals(conversation.tools, request.tools)
+        assertEquals("none", request.toolChoice)
+        val last = request.messages.last()
+        assertEquals("user", last.role)
+        assertTrue("\"최근 질문\"" in last.content!! && last.content!!.endsWith("지시문"), last.content)
+    }
+
+    @Test
+    fun cachedSummarizerSummarizesEverythingWhenNothingIsKept() = runTest {
+        val client = RecordingClient("새 요약")
+        val all = conversation.copy(messages = listOf(ChatRequest.MessageRequest("system", "시스템")) + dropped)
+
+        CachedModelSummarizer(client, "지시문").summarize(SummaryContext(null, dropped, all))
+
+        assertTrue(client.requests.single().messages.last().content!!.startsWith("위 대화 전체"))
+    }
+
     @Test
     fun sendsInstructionAndRenderedHistoryWithoutTools() = runTest {
         val client = RecordingClient("새 요약")
 
-        ModelSummarizer(client, "gpt-4o-mini", "지시문").summarize("이전 요약 내용", dropped)
+        ModelSummarizer(client, "gpt-4o-mini", "지시문").summarize(SummaryContext("이전 요약 내용", dropped, conversation))
 
         val request = client.requests.single()
         assertEquals("gpt-4o-mini", request.model)
@@ -39,7 +73,7 @@ class ModelSummarizerTest {
 
     @Test
     fun returnsTextAndUsage() = runTest {
-        val summary = ModelSummarizer(RecordingClient("새 요약"), "gpt-4o-mini").summarize(null, dropped)
+        val summary = ModelSummarizer(RecordingClient("새 요약"), "gpt-4o-mini").summarize(SummaryContext(null, dropped, conversation))
 
         assertEquals("새 요약", summary.text)
         assertEquals(42, summary.usage!!.promptTokens)
@@ -47,7 +81,7 @@ class ModelSummarizerTest {
 
     @Test
     fun dropSummarizerForgetsEverything() = runTest {
-        assertEquals(Summary(null, null), DropSummarizer.summarize("이전 요약", dropped))
+        assertEquals(Summary(null, null), DropSummarizer.summarize(SummaryContext("이전 요약", dropped, conversation)))
     }
 
     private class RecordingClient(private val text: String) : ChatClient {

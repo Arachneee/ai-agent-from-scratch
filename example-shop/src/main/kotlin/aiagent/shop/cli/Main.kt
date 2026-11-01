@@ -30,7 +30,7 @@ private val RESPONDERS = setOf("rule", "model")
 
 private const val USAGE =
     "사용법: chat [--seed <정수>] [--faults <none|slow|flaky|rate-limited|stale|down|slow-shipping>] [--responder <rule|model>], " +
-        "scenarios [--seed <정수>], burst [--count <1~100>] [--concurrency <1~100>] [--model <이름>], 또는 long-chat [--seed <정수>] [--summary <none|drop|model>]"
+        "scenarios [--seed <정수>], burst [--count <1~100>] [--concurrency <1~100>] [--model <이름>], 또는 long-chat [--seed <정수>] [--summary <none|drop|model|cached>]"
 
 fun parseArgs(args: Array<String>): CliArgs {
     val command = args.firstOrNull()
@@ -176,6 +176,7 @@ suspend fun runChatTurn(
             responder.respond(line) { event ->
                 when (event) {
                     is AgentEvent.TextDelta -> printFragment(event.text)
+                    is AgentEvent.HistorySummarized -> printLine("[기록 요약] ${event.summary ?: "요약 없이 버림"}")
                     is AgentEvent.ToolCallStarted -> {
                         printLine("[툴 호출] ${event.name} ${event.arguments}")
                         streamed.clear()

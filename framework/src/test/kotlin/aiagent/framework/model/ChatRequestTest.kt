@@ -33,4 +33,15 @@ class ChatRequestTest {
         assertEquals("string", parameters["properties"]!!.jsonObject["id"]!!.jsonObject["type"]!!.jsonPrimitive.content)
         assertEquals(listOf("id"), parameters["required"]!!.jsonArray.map { it.jsonPrimitive.content })
     }
+
+    @Test
+    fun toolChoiceIsSentOnlyWhenSet() {
+        val plain = Json.encodeToString(ChatRequest.serializer(), ChatRequest(model = "m", messages = emptyList()))
+        val none = Json.parseToJsonElement(
+            Json.encodeToString(ChatRequest.serializer(), ChatRequest(model = "m", messages = emptyList(), toolChoice = "none")),
+        ).jsonObject
+
+        assertEquals(false, "tool_choice" in plain)
+        assertEquals("none", none["tool_choice"]!!.jsonPrimitive.content)
+    }
 }

@@ -1,5 +1,7 @@
 package aiagent.shop.scenario
 
+import aiagent.framework.agent.HistorySummarizer
+import aiagent.framework.agent.Summary
 import aiagent.framework.model.ChatApiException
 import aiagent.framework.model.ChatChunk
 import aiagent.framework.model.ChatClient
@@ -83,6 +85,21 @@ class LongChatTest {
     }
 
     @Test
+    fun summaryRequestAndTextArePrinted() = runTest {
+        val client = FakeChatClient(List(5) { answer("답${it + 1}", 500) } + answer("답6", 30))
+        val settings = ModelSettings(ModelPricing.DEFAULT_MODEL, temperature = null, maxTokens = null, showRaw = false, historyTokenLimit = 100)
+        val summarizer = HistorySummarizer { Summary("주문 ORD-0001 출고 대기", usage(900, cached = 768)) }
+        val responder = ModelResponder(client, ShopTools(ShopWorld.create(42)), { settings }, summarizer = summarizer)
+        val out = mutableListOf<String>()
+
+        val report = runLongChat(responder, List(6) { "질문${it + 1}" }, emptyList(), out::add)
+
+        assertTrue(out.any { it.startsWith("[요약 요청] 입력 900 (캐시 768)") }, out.toString())
+        assertTrue(out.any { it == "[요약문] 주문 ORD-0001 출고 대기" }, out.toString())
+        assertEquals(930, report.turns[5].inputTokens)
+    }
+
+    @Test
     fun scriptShape() {
         assertTrue(LongChat.messages.size >= 41)
         val opening = LongChat.messages.take(3).joinToString(" ")
@@ -117,6 +134,12 @@ class LongChatTest {
 
         fun answer(content: String, promptTokens: Int, cached: Int = 0) =
             response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), "stop", promptTokens, cached)
+
+        fun usage(promptTokens: Int, cached: Int) = ChatResponse.Usage(
+            promptTokens, 5, promptTokens + 5,
+            ChatResponse.PromptTokensDetails(cached, 0),
+            ChatResponse.CompletionTokensDetails(0, 0, 0, 0),
+        )
 
         fun response(message: ChatResponse.MessageResponse, finishReason: String, promptTokens: Int, cached: Int) = Result.success(
             ChatResponse(
