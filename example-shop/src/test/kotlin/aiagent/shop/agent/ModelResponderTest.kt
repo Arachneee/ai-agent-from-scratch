@@ -140,6 +140,23 @@ class ModelResponderTest {
         assertEquals(128, responder.lastUsages.single().cachedTokens)
     }
 
+    @Test
+    fun historyTokenLimitIsPassedToAgent() = runTest {
+        val client = FakeChatClient(listOf(ok("답1", promptTokens = 500), ok("답2", promptTokens = 500), ok("답3")))
+        val responder = ModelResponder(client, tools, { settings.copy(historyTokenLimit = 100) }, SYSTEM)
+
+        responder.respond("첫")
+        responder.respond("둘")
+        responder.respond("셋")
+
+        assertEquals(listOf("system", "user", "assistant", "user", "assistant", "user"), client.requests[2].messages.map { it.role })
+    }
+
+    @Test
+    fun summaryInstructionAsksForOrderNumbers() {
+        assertTrue("주문번호" in ModelResponder.SUMMARY_INSTRUCTION)
+    }
+
     private fun responder(client: ChatClient, current: ModelSettings = settings) = ModelResponder(client, tools, { current }, SYSTEM)
 
     private class FakeChatClient(private val results: List<Result<ChatResponse>>) : ChatClient {

@@ -126,7 +126,15 @@
 - [ ] **Step 6: 검토하고 설명한다.** 학습자가 고르지 않은 동작이 숨어 있으면 짚는다. 이 동작은 고치지 않고 다음 단계로 넘길 문제 후보로 적는다.
 - [ ] **Step 7: 커밋한다.** 메시지는 학습자가 고른 방식에 맞춰 한국어로 쓴다.
 
-**확정된 모양:** (Task 4에서 채운다)
+**확정된 모양:** 학습자가 Claude의 제안을 받아들여 다음과 같이 정했다.
+
+- 토큰 양은 직전 응답의 `prompt_tokens`로 잰다. 상담 전체의 누적 합은 줄일 수 없으므로 쓰지 않는다.
+- `AgentSettings`에 `historyTokenLimit: Int? = null`과 `keepRecentTurns: Int = 4`를 더한다. 턴을 시작해 사용자 메시지를 기록에 넣은 뒤, 직전 `prompt_tokens`가 `historyTokenLimit`을 넘으면 줄인다.
+- 줄일 때는 사용자 메시지를 경계로 턴 단위로 나누고, 최근 `keepRecentTurns`개의 지난 턴과 이번 턴의 사용자 메시지만 남긴다. 그래서 툴 호출 메시지와 결과 메시지의 짝이 깨지지 않는다. 한 번에 크게 줄여 캐시가 깨지는 턴을 줄인다.
+- 잘라 낸 기록을 어떻게 남길지는 전략 패턴으로 고른다. `fun interface HistorySummarizer { suspend fun summarize(previous: String?, dropped: List<MessageRequest>): Summary }`, `Summary(text: String?, usage: ChatResponse.Usage?)`. 미리 만든 전략은 요약 없이 버리는 `DropSummarizer`와, 이전 요약과 잘라 낸 기록을 모델에게 보내 새 요약을 받는 `ModelSummarizer(client, model, instruction)`다.
+- `Agent` 생성자에 `summarizer: HistorySummarizer = DropSummarizer`를 둔다. 요약은 시스템 프롬프트 바로 뒤에 `지금까지의 대화 요약: …` 시스템 메시지로 보낸다. 요약 요청의 사용량은 그 턴의 `usages` 맨 앞에 넣는다. `reset()`은 요약과 직전 입력 토큰도 비운다.
+- 예제의 쇼핑몰 요약 지시문은 기본 지시문에 "고객이 말한 주문번호와 각 주문의 상태는 반드시 포함하라"를 더한다. `long-chat`은 `--summary <none|drop|model>`로 전략을 고르고, 기본은 `model`, 상한은 1,800이다.
+- 한 시간 뒤 항상 줄이기는 다음 단계로 넘긴다.
 
 ### Task 5: 개선 후 수치와 배치 판단
 

@@ -3,7 +3,10 @@ package aiagent.shop.agent
 import aiagent.framework.agent.Agent
 import aiagent.framework.agent.AgentEvent
 import aiagent.framework.agent.AgentSettings
+import aiagent.framework.agent.DropSummarizer
 import aiagent.framework.agent.ExecutedToolCall
+import aiagent.framework.agent.HistorySummarizer
+import aiagent.framework.agent.ModelSummarizer
 import aiagent.framework.model.ChatApiException
 import aiagent.framework.model.ChatClient
 import aiagent.framework.model.ModelPricing
@@ -21,8 +24,9 @@ class ModelResponder(
     tools: ShopTools,
     private val settings: () -> ModelSettings,
     systemPrompt: String = SYSTEM_PROMPT,
+    summarizer: HistorySummarizer = DropSummarizer,
 ) : Responder {
-    private val agent = Agent(client, tools.catalog, { settings().toAgentSettings() }, systemPrompt)
+    private val agent = Agent(client, tools.catalog, { settings().toAgentSettings() }, systemPrompt, summarizer)
 
     var lastUsages: List<CallUsage> = emptyList()
         private set
@@ -53,10 +57,17 @@ class ModelResponder(
     fun reset() = agent.reset()
 
     private fun ModelSettings.toAgentSettings() =
-        AgentSettings(model, temperature, maxTokens, if (toolsEnabled) ShopTools.NAMES else emptyList())
+        AgentSettings(
+            model, temperature, maxTokens, if (toolsEnabled) ShopTools.NAMES else emptyList(),
+            historyTokenLimit = historyTokenLimit,
+        )
 
     companion object {
         const val SYSTEM_PROMPT =
             "너는 가상 쇼핑몰의 고객지원 상담원이다. 고객의 주문 조회, 배송, 교환, 환불 문의에 한국어로 친절하고 간결하게 답한다."
+
+        /** 기록을 요약할 때 쓰는 지시문이다. 프레임워크의 기본 지시문에 주문번호와 상태를 반드시 남기라는 말을 더한다. */
+        const val SUMMARY_INSTRUCTION =
+            ModelSummarizer.DEFAULT_INSTRUCTION + " 고객이 말한 주문번호와 각 주문의 상태는 반드시 포함하라."
     }
 }

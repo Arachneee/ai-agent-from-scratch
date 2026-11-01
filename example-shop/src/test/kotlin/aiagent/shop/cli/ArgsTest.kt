@@ -83,8 +83,9 @@ class ArgsTest {
     }
 
     @Test
-    fun longChatParsesSeed() {
-        assertEquals(7L, parseLongChatArgs(arrayOf("long-chat", "--seed", "7")))
-        assertEquals(42L, parseLongChatArgs(arrayOf("long-chat")))
+    fun longChatParsesSeedAndSummary() {
+        assertEquals(LongChatArgs(7, "drop"), parseLongChatArgs(arrayOf("long-chat", "--seed", "7", "--summary", "drop")))
+        assertEquals(LongChatArgs(42, "model"), parseLongChatArgs(arrayOf("long-chat")))
+        assertFailsWith<IllegalArgumentException> { parseLongChatArgs(arrayOf("long-chat", "--summary", "maybe")) }
     }
 }

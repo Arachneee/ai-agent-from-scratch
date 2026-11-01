@@ -306,6 +306,118 @@ class AgentTest {
         assertEquals(listOf("system", "user"), client.requests[1].messages.map { it.role })
     }
 
+    private val trimming = settings.copy(historyTokenLimit = 100, keepRecentTurns = 1)
+
+    @Test
+    fun historyIsUntouchedBelowThreshold() = runTest {
+        val client = FakeChatClient(listOf(answer("답1", promptTokens = 50), answer("답2", promptTokens = 80), answer("답3")))
+        val agent = agent(client, trimming)
+
+        agent.run("첫")
+        agent.run("둘")
+        agent.run("셋")
+
+        assertEquals(listOf("system", "user", "assistant", "user", "assistant", "user"), client.requests[2].messages.map { it.role })
+    }
+
+    @Test
+    fun oldestTurnsAreTrimmedFirst() = runTest {
+        val client = FakeChatClient(listOf(answer("답1", promptTokens = 500), answer("답2", promptTokens = 500), answer("답3")))
+        val agent = agent(client, trimming)
+
+        agent.run("첫")
+        agent.run("둘")
+        agent.run("셋")
+
+        assertEquals(
+            listOf("system" to SYSTEM, "user" to "둘", "assistant" to "답2", "user" to "셋"),
+            client.requests[2].messages.map { it.role to it.content },
+        )
+    }
+
+    @Test
+    fun trimmedHistoryKeepsToolCallPairs() = runTest {
+        val client = FakeChatClient(
+            listOf(
+                toolCalls(call("call_1", "get_order"), promptTokens = 500), answer("답1", promptTokens = 500),
+                toolCalls(call("call_2", "get_order"), call("call_3", "get_shipment"), promptTokens = 500), answer("답2", promptTokens = 500),
+                answer("답3"),
+            ),
+        )
+        val agent = agent(client, trimming)
+
+        agent.run("첫")
+        agent.run("둘")
+        agent.run("셋")
+
+        val messages = client.requests[4].messages
+        assertEquals(listOf("system", "user", "assistant", "tool", "tool", "assistant", "user"), messages.map { it.role })
+        messages.forEachIndexed { i, message ->
+            if (message.role == "tool") {
+                val owner = messages.subList(0, i).last { it.role == "assistant" && it.toolCalls != null }
+                assertTrue(owner.toolCalls!!.any { it.id == message.toolCallId }, message.toString())
+            }
+        }
+    }
+
+    @Test
+    fun systemPromptStaysFirst() = runTest {
+        val client = FakeChatClient(listOf(answer("답1", promptTokens = 500), answer("답2", promptTokens = 500), answer("답3")))
+        val agent = agent(client, trimming)
+
+        agent.run("첫")
+        agent.run("둘")
+        agent.run("셋")
+
+        assertEquals("system" to SYSTEM, client.requests[2].messages.first().let { it.role to it.content })
+    }
+
+    @Test
+    fun currentUserMessageIsNeverTrimmed() = runTest {
+        val client = FakeChatClient(listOf(answer("답1", promptTokens = 500), answer("답2")))
+        val agent = agent(client, trimming.copy(keepRecentTurns = 0))
+
+        agent.run("첫")
+        agent.run("둘")
+
+        assertEquals(listOf("system" to SYSTEM, "user" to "둘"), client.requests[1].messages.map { it.role to it.content })
+    }
+
+    @Test
+    fun summaryReplacesTrimmedMessages() = runTest {
+        val seen = mutableListOf<Pair<String?, List<String>>>()
+        val summarizer = HistorySummarizer { previous, dropped ->
+            seen += previous to dropped.map { "${it.role}:${it.content}" }
+            Summary("요약${seen.size}", usage(77))
+        }
+        val client = FakeChatClient(List(3) { answer("답${it + 1}", promptTokens = 500) } + answer("답4"))
+        val agent = Agent(client, catalog, { trimming }, SYSTEM, summarizer)
+
+        agent.run("첫")
+        agent.run("둘")
+        val third = agent.run("셋")
+        agent.run("넷")
+
+        assertEquals(listOf(null to listOf("user:첫", "assistant:답1"), "요약1" to listOf("user:둘", "assistant:답2")), seen)
+        assertEquals("system" to "지금까지의 대화 요약: 요약1", client.requests[2].messages[1].let { it.role to it.content })
+        assertEquals(listOf(77, 500), third.usages.map { it.promptTokens })
+    }
+
+    @Test
+    fun resetClearsSummaryAndTokenCount() = runTest {
+        val summarizer = HistorySummarizer { _, _ -> Summary("요약", null) }
+        val client = FakeChatClient(List(3) { answer("답", promptTokens = 500) } + answer("새 답"))
+        val agent = Agent(client, catalog, { trimming }, SYSTEM, summarizer)
+
+        agent.run("첫")
+        agent.run("둘")
+        agent.run("셋")
+        agent.reset()
+        agent.run("새 질문")
+
+        assertEquals(listOf("system", "user"), client.requests[3].messages.map { it.role })
+    }
+
     private fun agent(client: ChatClient, current: AgentSettings = settings) = Agent(client, catalog, { current }, SYSTEM)
 
     /**
@@ -343,6 +455,12 @@ class AgentTest {
 
         fun answer(content: String?, finishReason: String = "stop", promptTokens: Int = 10) =
             response(ChatResponse.MessageResponse("assistant", content, null, emptyList()), finishReason, promptTokens)
+
+        fun usage(promptTokens: Int) = ChatResponse.Usage(
+            promptTokens, 5, promptTokens + 5,
+            ChatResponse.PromptTokensDetails(0, 0),
+            ChatResponse.CompletionTokensDetails(0, 0, 0, 0),
+        )
 
         fun response(message: ChatResponse.MessageResponse, finishReason: String, promptTokens: Int) = Result.success(
             ChatResponse(

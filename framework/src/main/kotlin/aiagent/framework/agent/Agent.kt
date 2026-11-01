@@ -12,6 +12,8 @@ import kotlinx.coroutines.coroutineScope
 /**
  * 한 턴마다 읽는 모델 호출 설정이다. [toolNames]가 비어 있으면 요청에 툴 정의를 싣지 않는다.
  * [maxCallsPerTool]은 한 턴 안에서 툴 하나를 실행할 수 있는 횟수이고, null이면 상한을 두지 않는다.
+ * [historyTokenLimit]은 직전 응답의 입력 토큰이 이 값을 넘으면 다음 턴을 시작할 때 기록을 줄이는 기준이고, null이면 줄이지 않는다.
+ * 줄일 때는 최근 [keepRecentTurns]개의 지난 턴과 이번 턴의 사용자 메시지만 남긴다.
  */
 data class AgentSettings(
     val model: String,
@@ -19,6 +21,8 @@ data class AgentSettings(
     val maxTokens: Int? = null,
     val toolNames: List<String> = emptyList(),
     val maxCallsPerTool: Int? = 3,
+    val historyTokenLimit: Int? = null,
+    val keepRecentTurns: Int = 4,
 )
 
 data class ExecutedToolCall(val name: String, val arguments: String, val result: String)
@@ -39,14 +43,19 @@ data class TurnResult(
  * 툴 호출 메시지와 결과 메시지는 결과가 모두 모인 뒤에 함께 기록하므로, 도중에 예외가 나도 짝 없는 툴 호출이 기록에 남지 않는다.
  * 한 턴 안에서 상한만큼 실행한 툴은 다음 요청의 툴 목록에서 빼고, 그 뒤의 호출은 실행하지 않고 오류 문장을 돌려보낸다.
  * 모든 툴이 빠지면 툴 정의 없이 요청하므로 모델은 글로 답해야 한다.
+ * 기록은 사용자 메시지를 경계로 턴 단위로만 잘라서 툴 호출 메시지와 결과 메시지의 짝을 지킨다.
+ * 잘라 낸 기록은 [summarizer]가 요약으로 바꾸고, 요약은 시스템 프롬프트 바로 뒤의 시스템 메시지로 보낸다.
  */
 class Agent(
     private val client: ChatClient,
     private val catalog: ToolCatalog,
     private val settings: () -> AgentSettings,
     private val systemPrompt: String,
+    private val summarizer: HistorySummarizer = DropSummarizer,
 ) {
     private val history = mutableListOf<ChatRequest.MessageRequest>()
+    private var summary: String? = null
+    private var lastPromptTokens = 0
 
     suspend fun run(message: String, onEvent: (AgentEvent) -> Unit = {}): TurnResult {
         val current = settings()
@@ -57,10 +66,15 @@ class Agent(
         val usages = mutableListOf<ChatResponse.Usage>()
         val executed = mutableListOf<ExecutedToolCall>()
         history += ChatRequest.MessageRequest("user", message)
+        if (current.historyTokenLimit != null && lastPromptTokens > current.historyTokenLimit) {
+            compact(current.keepRecentTurns)?.let { usages += it }
+        }
         while (true) {
             val request = ChatRequest(
                 model = current.model,
-                messages = listOf(ChatRequest.MessageRequest("system", systemPrompt)) + history,
+                messages = listOf(ChatRequest.MessageRequest("system", systemPrompt)) +
+                    listOfNotNull(summary?.let { ChatRequest.MessageRequest("system", "지금까지의 대화 요약: $it") }) +
+                    history,
                 temperature = current.temperature,
                 maxTokens = current.maxTokens,
                 tools = allTools?.filter { canCall(it.function.name) }?.takeIf { it.isNotEmpty() },
@@ -69,6 +83,7 @@ class Agent(
                 chunk.choices.firstOrNull()?.delta?.content?.takeIf { it.isNotEmpty() }?.let { onEvent(AgentEvent.TextDelta(it)) }
             }
             usages += response.usage
+            lastPromptTokens = response.usage.promptTokens
             val choice = response.choices.first()
             val toolCalls = choice.message.toolCalls.orEmpty()
             if (toolCalls.isEmpty()) {
@@ -92,7 +107,23 @@ class Agent(
         }
     }
 
-    fun reset() = history.clear()
+    fun reset() {
+        history.clear()
+        summary = null
+        lastPromptTokens = 0
+    }
+
+    /** 이번 턴의 사용자 메시지 앞에서 최근 [keep]개의 지난 턴만 남기고 잘라 낸 것을 요약한다. 요약에 쓴 사용량을 돌려준다. */
+    private suspend fun compact(keep: Int): ChatResponse.Usage? {
+        val pastTurnStarts = history.indices.filter { history[it].role == "user" }.dropLast(1)
+        if (pastTurnStarts.size <= keep) return null
+        val cut = if (keep == 0) history.lastIndex else pastTurnStarts[pastTurnStarts.size - keep]
+        val dropped = history.subList(0, cut)
+        val result = summarizer.summarize(summary, dropped.toList())
+        summary = result.text
+        dropped.clear()
+        return result.usage
+    }
 
     private suspend fun execute(call: ChatResponse.ToolCall): String = try {
         catalog.execute(call.function.name, call.function.arguments)
