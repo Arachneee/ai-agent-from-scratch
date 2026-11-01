@@ -100,6 +100,21 @@ class LongChatTest {
     }
 
     @Test
+    fun delayReasonCheckpointNeedsOrderSpecificFact() {
+        val delayReason = LongChat.checkpoints.single { it.turn == 39 }
+        val passes = { reply: String -> delayReason.accepted.any { it in reply } }
+
+        assertFalse(passes("배송 지연 사유는 현재 확인이 어렵습니다. 주문번호를 알려 주세요."))
+        assertTrue(passes("ORD-0002는 예상 배송일인 2025년 12월 25일보다 늦어지고 있습니다."))
+        assertTrue(passes("두 번째 주문은 12월 25일 도착 예정이었는데 늦어지고 있어요."))
+    }
+
+    @Test
+    fun noCheckpointAcceptsGenericDelayWording() {
+        LongChat.checkpoints.forEach { checkpoint -> assertFalse("지연" in checkpoint.accepted, checkpoint.toString()) }
+    }
+
+    @Test
     fun scriptShape() {
         assertTrue(LongChat.messages.size >= 41)
         val opening = LongChat.messages.take(3).joinToString(" ")

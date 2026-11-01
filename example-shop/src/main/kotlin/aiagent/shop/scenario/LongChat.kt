@@ -20,7 +20,10 @@ data class LongChatReport(val turns: List<TurnMeasure>, val passed: List<Checkpo
  */
 object LongChat {
     private val FIRST_ORDER = listOf("ORD-0001", "준비 중", "출고 대기")
-    private val SECOND_ORDER = listOf("ORD-0002", "배송 지연", "지연")
+    private val SECOND_ORDER = listOf("ORD-0002", "배송 지연")
+
+    /** 39턴은 질문이 지연을 전제하므로, 주문을 모르는 답에도 "지연"이 들어간다. 그 주문만의 예상 배송일로 판정한다. */
+    private val SECOND_ORDER_DELAY = listOf("ORD-0002", "12월 25일", "12-25")
 
     val messages: List<String> = listOf(
         "안녕하세요. 주문 두 건 문의드리려고요.",
@@ -70,7 +73,7 @@ object LongChat {
         Checkpoint(31, FIRST_ORDER),
         Checkpoint(34, SECOND_ORDER),
         Checkpoint(37, FIRST_ORDER),
-        Checkpoint(39, SECOND_ORDER),
+        Checkpoint(39, SECOND_ORDER_DELAY),
     )
 }
 

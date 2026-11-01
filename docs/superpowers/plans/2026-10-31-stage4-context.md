@@ -68,7 +68,7 @@
 - Produces: `object LongChat { val messages: List<String>; val checkpoints: List<Checkpoint> }`.
   - 발화는 41개 이상이다. 처음 세 턴 안에 `ORD-0001`과 `ORD-0002`를 말한다. 시드 42에서 `ORD-0001`은 상품 준비 중이고 출고 대기, `ORD-0002`는 배송 지연이다.
   - 확인 지점은 30턴 이후에 네 개를 둔다. 주문번호를 다시 말하지 않고 "처음에 말한 첫 번째 주문"처럼 묻는다. 두 주문에 두 개씩이다.
-  - `accepted`에는 그 주문의 번호와 그 주문에만 해당하는 상태 문구를 넣는다. `ORD-0001`은 "ORD-0001", "준비 중", "출고 대기"이고, `ORD-0002`는 "ORD-0002", "배송 지연", "지연"이다.
+  - `accepted`에는 그 주문의 번호와 그 주문에만 해당하는 상태 문구를 넣는다. `ORD-0001`은 "ORD-0001", "준비 중", "출고 대기"이고, `ORD-0002`는 "ORD-0002", "배송 지연"이다. 지연을 전제하고 묻는 39턴은 "ORD-0002", "12월 25일", "12-25"다. 처음에는 "지연"도 넣었으나 최종 검토에서 주문을 모르는 답도 통과시킨다는 지적을 받고 뺐다.
   - 마지막 발화는 툴이 필요 없는 일반 문의다.
 - Produces: `data class TurnMeasure(val turn: Int, val inputTokens: Int, val cachedTokens: Int, val costUsd: Double?, val error: String?)`와 `data class LongChatReport(val turns: List<TurnMeasure>, val passed: List<Checkpoint>, val failed: List<Pair<Checkpoint, String>>)`. `failed`의 문자열은 그 턴의 답이다.
 - Produces: `suspend fun runLongChat(responder: ModelResponder, messages: List<String>, checkpoints: List<Checkpoint>, out: (String) -> Unit): LongChatReport`. 턴마다 `[턴 %d] 입력 %d (캐시 %d) · 약 %.4f원` 한 줄을 찍는다. 답이 `[모델 오류]`로 시작하면 `error`에 답을 담고 다음 발화로 넘어간다. 끝나면 요약을 찍는다. 요약에는 마지막 턴의 입력 토큰, 전체 입력 토큰 합, 전체 비용, 확인 지점의 정답 수, 틀린 확인 지점의 답이 들어간다.
